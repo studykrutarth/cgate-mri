@@ -139,9 +139,62 @@ router must be run. A negative result from a model with three times more
 parameters than training cases is a statement about capacity, not about the
 hypothesis.
 
-Still untested and worth trying after that: `RouterConfig.entropy_reg > 0` to
-damp weight collapse, and clipping standardised quality features to the observed
-training range to bound extrapolation.
+## F3d — Cutting capacity fixes accuracy but trades away ranking
+
+`--protocol external --calib-target-fraction 0.15 --router-shared`, 119 test cases:
+
+| Config | params | acc | AURC | E-AURC |
+|---|---|---|---|---|
+| B4 uniform | — | 0.513 | **0.3149** | 0.1680 |
+| B6 per-finding router | 120 | 0.437 | 0.3673 | **0.1637** |
+| B6 shared router | 24 | **0.504** | 0.3677 | 0.2151 |
+
+ΔAURC (shared) = +0.0528, 95% CI [-0.006, +0.101], p = 0.071.
+
+F3c is **confirmed as far as accuracy goes**: cutting parameters 5× restored
+B6's accuracy from 0.437 to 0.504, essentially matching uniform fusion. So the
+accuracy loss really was overfitting.
+
+But the confidence ranking degraded in exchange (E-AURC 0.164 → 0.215), and
+total AURC did not move. There is a capacity trade-off here:
+
+- **high capacity** — ranks confidence well, predicts badly (overfits weights)
+- **low capacity** — predicts well, ranks badly (too coarse to exploit quality)
+
+Neither configuration beats uniform fusion on this testbed.
+
+## Where this leaves the hypothesis
+
+**On synthetic phantoms, quality-aware routing does not beat uniform
+heterogeneous fusion under distribution shift, in any of the three
+configurations tested.** ΔAURC stayed positive (0.052–0.062) with p between 0.07
+and 0.19 — consistently the wrong direction, never significant.
+
+That is a genuine negative result *for this testbed*, and it should be stated
+plainly rather than tuned away. Two honest readings, and the real experiment
+distinguishes them:
+
+1. **The hypothesis is weak.** Heterogeneity captures most of the available gain
+   (F1) and conditioning the weights on quality adds nothing on top.
+2. **The testbed cannot express it.** The three feature views may not be
+   *differentially* informative enough for routing to have anything to exploit,
+   and the surrogate experts are far weaker than real CNN/ViT backbones. The
+   phantom corruption model is also mine, so the very structure routing needs
+   is something I designed rather than observed.
+
+Reading 2 is not an excuse to dismiss reading 1. It is a reason the conclusion
+must come from BraTS 2021 → BraTS-Africa with real backbones, where the quality
+gap is measured rather than simulated.
+
+**What the deck should claim, given this:** the falsifiable-comparison design is
+the contribution, and B4 vs B3 (heterogeneity beats ensembling, F1) is currently
+the only effect with any support. Do not promise that routing will win.
+
+Still untested, in rough order of expected value: `RouterConfig.entropy_reg > 0`
+to damp weight collapse; clipping standardised quality features to the training
+range; a per-finding router with much stronger `--router-l2` (an intermediate
+capacity between the two rows above); and multiple seeds, since every number
+here is a single seed.
 
 ## F4 — `ncr_present` is close to degenerate on phantoms
 
