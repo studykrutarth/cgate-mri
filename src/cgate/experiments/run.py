@@ -14,7 +14,11 @@ from pathlib import Path
 
 import numpy as np
 
-from ..data.splits import split_summary, stratified_patient_split
+from ..data.splits import (
+    external_cohort_split,
+    split_summary,
+    stratified_patient_split,
+)
 from ..data.synthetic import SyntheticConfig, build_synthetic_dataset
 from ..findings import FindingExtractor, label_prevalence
 from ..pipeline import CaseTable, ingest_cases
@@ -72,6 +76,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
+        "--protocol",
+        choices=("stratified", "external"),
+        default="stratified",
+        help="stratified: random patient-level split, both cohorts in every "
+        "split. external: hold out an ENTIRE cohort as test (train+calibrate on "
+        "the rest). Use 'external' for the real BraTS 2021 -> BraTS-Africa "
+        "experiment; it gives ~5x the test cases in the degraded cohort, which "
+        "a 20%% split cannot supply.",
+    )
+    p.add_argument(
+        "--test-cohort",
+        default="low",
+        help="cohort held out as test when --protocol external",
+    )
+    p.add_argument(
         "--target-coverage",
         type=float,
         default=0.8,
@@ -94,6 +113,11 @@ def build_parser() -> argparse.ArgumentParser:
         "which are generated at a much smaller volume size.",
     )
     p.add_argument("--out", type=Path, help="write full results to this JSON file")
+    p.add_argument(
+        "--figures",
+        type=Path,
+        help="directory for risk-coverage and reliability figures (needs matplotlib)",
+    )
     p.add_argument(
         "--bootstrap",
         type=int,
@@ -138,16 +162,24 @@ def main(argv: list[str] | None = None) -> int:
         for name, mat in table.views.items():
             print(f"  view {name:<8} dim={mat.shape[1]}")
 
-    # Patient-level, cohort-stratified splits. Stratifying on cohort keeps the
-    # low-quality stratum populated in every split.
-    splits = stratified_patient_split(
-        table.patient_ids,
-        table.cohorts,
-        {"train": 0.6, "calib": 0.2, "test": 0.2},
-        seed=args.seed,
-    )
+    if args.protocol == "external":
+        splits = external_cohort_split(
+            table.patient_ids,
+            table.cohorts,
+            test_cohort=args.test_cohort,
+            seed=args.seed,
+        )
+    else:
+        # Patient-level, cohort-stratified. Stratifying on cohort keeps the
+        # low-quality stratum populated in every split.
+        splits = stratified_patient_split(
+            table.patient_ids,
+            table.cohorts,
+            {"train": 0.6, "calib": 0.2, "test": 0.2},
+            seed=args.seed,
+        )
     if verbose:
-        print("\nSplits (patient-level, cohort-stratified):")
+        print(f"\nSplits (patient-level, protocol={args.protocol}):")
         for name, info in split_summary(splits, table.cohorts).items():
             print(f"  {name:<6} {info}")
 
@@ -221,6 +253,19 @@ def main(argv: list[str] | None = None) -> int:
             "  measurably beat uniform fusion on this data -- which is a real result,\n"
             "  not a failure to report."
         )
+
+    if args.figures:
+        try:
+            from .figures import save_all_figures
+
+            written = save_all_figures(results, args.figures, table)
+            print(f"\nFigures written to {args.figures}:")
+            for path in written:
+                print(f"  {path.name}")
+        except ImportError as exc:
+            # Figures are a convenience; losing them must not fail a run that
+            # already produced valid numbers.
+            print(f"\nSkipped figures: {exc}")
 
     if args.out:
         payload = {

@@ -24,9 +24,12 @@ did not help and that is the result we report.
 
 ```bash
 pip install -e ".[sci,dev]"
-pytest -q                                  # 54 tests, ~20s
-cgate --n-cases 240                        # full ablation grid on phantoms
+pytest -q                                       # 65 tests, ~45s
+cgate --n-cases 400 --figures runs/figs         # ablation grid + plots
 ```
+
+On Windows the console script may not land on PATH; use
+`py -3 -m cgate.experiments.run ...` instead.
 
 No dataset download is required: the default runs on synthetic phantoms.
 `torch` is **not** needed — see [Status](#status).
@@ -126,6 +129,8 @@ matches accuracy on average, not whether thresholding on it removes errors.
 - **Gate quality:** risk–coverage curve, **AURC**, **E-AURC**
 - **Operational:** risk @ 80% coverage, coverage @ 5%/10% risk
 - **Significance:** paired bootstrap CI on ΔAURC between systems
+- **Figures:** `--figures DIR` writes risk–coverage curves (overall and per
+  cohort) and a reliability diagram
 
 E-AURC matters because raw AURC is bounded below by the model's error rate: an
 accurate model looks good on AURC even with worthless confidence. Subtracting
@@ -160,10 +165,35 @@ Calibration is **halved** because the router is optimised on `calib_fit`;
 choosing the gate threshold on the same cases lets the gate exploit the router's
 in-sample fit and overstates coverage at a given risk.
 
-Splits are **patient-level** and cohort-stratified. `assert_no_leakage` runs
-automatically on every split — with 2D-slice or 3D-patch training, splitting by
-sample puts neighbouring slices of the same tumour on both sides, which is the
-most common silent bug in this literature.
+Splits are **patient-level**. `assert_no_leakage` runs automatically on every
+split — with 2D-slice or 3D-patch training, splitting by sample puts
+neighbouring slices of the same tumour on both sides, which is the most common
+silent bug in this literature.
+
+### Two protocols — use `external` for the real experiment
+
+```bash
+cgate --protocol stratified     # random split, both cohorts everywhere (default)
+cgate --protocol external       # hold out an ENTIRE cohort as test
+```
+
+`external` trains and calibrates on the high-quality cohort, then tests on
+**every** case of the degraded one. Use it for BraTS 2021 → BraTS-Africa, for
+two reasons:
+
+1. **Statistical power.** BraTS-Africa has ~146 cases. A 20% test split leaves
+   ~29 — measured on phantoms, that is not enough to resolve the ~0.03 AURC
+   effect this project is looking for; the confidence interval swamps it.
+   Holding out the whole cohort multiplies the test set roughly fivefold at no
+   cost.
+2. **It is the real deployment question.** "We trained where the data is good;
+   what happens when the scanner is worse?" A random split mixes degraded scans
+   into training, which is exactly the confound that hides whether routing
+   transfers.
+
+Trade-off to state when reporting: under `external`, train and test differ in
+acquisition as well as quality, so a drop cannot be attributed to quality alone.
+Report both protocols.
 
 ---
 
@@ -234,6 +264,9 @@ src/cgate/
   routing.py      quality-conditioned softmax-linear router (numpy Adam)
   pipeline.py     ingest → fit → calibrate → route → gate
   data/           synthetic phantoms, BraTS loader, feature views, splits
-  experts/        expert contract + scikit-learn experts
-  experiments/    ablation grid, metrics, CLI
+  experts/        expert contract + scikit-learn experts (see experts/README.md)
+  experiments/    ablation grid, metrics, figures, CLI
+docs/
+  quality-metrics.md   IQM definitions and the skull-stripping trap
+  scope.md             why report generation is not in Project-I
 ```
