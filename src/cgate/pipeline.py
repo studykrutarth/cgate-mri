@@ -254,6 +254,7 @@ class TrainedSystem:
                 expert_probs_val=cal_gate,
                 labels_val=labels[calib_gate],
             )
+            self.fit_log["router_capacity"] = dict(self.router.fit_log_)
             self.fit_log["router_mean_weights"] = {
                 FINDING_NAMES[j]: {
                     self.expert_names[e]: round(float(w), 4)

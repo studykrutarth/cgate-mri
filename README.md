@@ -281,8 +281,15 @@ experiment up:
 
 - **A 20% test split on BraTS-Africa (~29 cases) cannot resolve the effect
   size this project is looking for.** Use `--protocol external`.
-- **A router fitted only on high-quality calibration data made routing *worse*
-  than uniform fusion under shift** (AURC +0.06, gate coverage collapsing from
-  84% to 56%). It has to extrapolate into a quality range it never saw. Run the
-  `--calib-target-fraction` control before concluding anything about the
-  hypothesis.
+- **Routing came out *worse* than uniform fusion under shift** (AURC +0.05 to
+  +0.06). Two causes were isolated, and only one is fixed:
+  - the router never saw the target domain while being fitted →
+    `--calib-target-fraction 0.15` (fixes the gate collapse, 56% → 89% coverage)
+  - **the router is overparameterised**: 120 parameters fitted on ~40
+    calibration cases. Its confidence *ranking* is fine (E-AURC 0.164 vs 0.168);
+    its *accuracy* is not (0.437 vs 0.513) → `--router-shared` cuts it to 24
+    parameters.
+
+**Run the low-capacity router before reporting a negative result.** A model with
+three times more parameters than training cases tells you about capacity, not
+about the hypothesis. The run log prints `params_per_sample` and warns.

@@ -137,6 +137,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory for risk-coverage and reliability figures (needs matplotlib)",
     )
     p.add_argument(
+        "--router-shared",
+        action="store_true",
+        help="share router weights across findings instead of fitting one set "
+        "per finding. Cuts parameters 5x (120 -> 24). The calibration split is "
+        "small by construction, so per-finding weights are easily "
+        "overparameterised; the run log reports the ratio.",
+    )
+    p.add_argument(
+        "--router-l2",
+        type=float,
+        default=None,
+        help="L2 penalty on router weights (default 0.01). Raise it when the "
+        "run log reports params_per_sample > 1.",
+    )
+    p.add_argument(
         "--bootstrap",
         type=int,
         default=2000,
@@ -225,9 +240,27 @@ def main(argv: list[str] | None = None) -> int:
         specs=ABLATIONS,
         seed=args.seed,
         target_coverage=args.target_coverage,
-        router=RouterConfig(seed=args.seed),
+        router=RouterConfig(
+            seed=args.seed,
+            per_finding=not args.router_shared,
+            l2=args.router_l2 if args.router_l2 is not None else RouterConfig.l2,
+        ),
         verbose=verbose,
     )
+
+    cap = results.get("B6", {}).get("fit_log", {}).get("router_capacity")
+    if cap:
+        note = "  <-- more parameters than cases" if cap["overparameterised"] else ""
+        print(
+            f"\nRouter capacity: {cap['n_params']} parameters fitted on "
+            f"{cap['n_samples']} cases "
+            f"({cap['params_per_sample']} per case){note}"
+        )
+        if cap["overparameterised"]:
+            print(
+                "  Try --router-shared (5x fewer parameters) or a larger "
+                "--router-l2 before concluding routing does not help."
+            )
 
     print("\n" + format_table(results, args.target_coverage))
     print(format_strata(results, args.target_coverage))

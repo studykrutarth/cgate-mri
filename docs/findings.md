@@ -59,14 +59,14 @@ Positive ΔAURC means **routing was worse than uniform fusion**, and the effect
 is near-significant in the wrong direction. Note also the gate collapse: B6
 deferred 61 of 140 cases against B4's 22.
 
-**Diagnosis.** Everything post-hoc — per-expert temperatures, the router, the
-gate threshold — was fitted on calibration data drawn entirely from the
-high-quality cohort. `QualityStandardizer` deliberately keeps *training*
-statistics (so real shift stays visible rather than being normalised away), so
-degraded scans arrive as large z-scores. A softmax-linear router evaluated far
-outside its fitted range saturates and collapses weight onto one expert — which
-is precisely the failure `RouterConfig.entropy_reg` exists to damp, and it
-defaults to 0.
+**First diagnosis (partly wrong, kept for the record).** That everything
+post-hoc was fitted on high-quality cases only, so the router had to extrapolate
+its quality-to-weight mapping into an unobserved range and saturated. The gate
+collapse looked like evidence for it.
+
+**The control that falsified it.** Lending 15% of the target cohort to
+calibration (`--calib-target-fraction 0.15`, F3b below) fixed the gate collapse
+but *not* the AURC regression. So extrapolation explains at most part of it.
 
 **Why this matters more than the phantom numbers:** the real experiment has this
 structure by construction. Train on BraTS 2021, test on BraTS-Africa, and the
@@ -87,11 +87,61 @@ cgate --protocol external --calib-target-fraction 0.15   # router has seen the d
 If routing only helps in the second condition, that is a publishable, honest
 claim with a clearly stated requirement, not a failure.
 
-Other levers worth testing before concluding, in rough order of cost:
-`RouterConfig.entropy_reg > 0` to prevent weight collapse; clipping standardised
-quality features to the observed training range to bound extrapolation; and
-per-finding vs shared router weights (`per_finding=False`) to cut parameters
-when calibration data is scarce.
+## F3b — The control fixed the gate but not the regression
+
+`--protocol external --calib-target-fraction 0.15`, 119 test cases:
+
+| | acc | AURC | **E-AURC** | gate coverage |
+|---|---|---|---|---|
+| B4 uniform | 0.513 | **0.3149** | 0.1680 | 80.7% |
+| B6 routed | 0.437 | 0.3673 | **0.1637** | 89.1% |
+
+ΔAURC = +0.0524, 95% CI [-0.022, +0.122], p = 0.188.
+
+The gate collapse is gone (56% → 89% coverage), so giving the router
+target-domain calibration data did help *that*. But routing is still behind on
+AURC, which falsifies extrapolation as the whole story.
+
+**The decomposition is the clue.** E-AURC subtracts the AURC of a perfect
+confidence ranking, isolating ranking quality from accuracy:
+
+- B6 **E-AURC 0.1637 < B4 0.1680** → B6's confidence *ranking* is marginally
+  **better**
+- B6 **accuracy 0.437 < B4 0.513** → B6's *predictions* are worse
+
+So the router is not mis-ranking confidence. It is choosing worse expert
+weights, and the accuracy loss drags total AURC down with it.
+
+## F3c — The router is overparameterised for the calibration split
+
+Counting parameters: `n_groups × n_experts × (n_features + 1)`
+= 5 findings × 3 experts × (7 IQMs + bias) = **120 parameters**.
+
+Fitted on `calib_fit`, which is *half* the calibration split by design (the
+other half sets the gate threshold). Under the external protocol that is
+**roughly 32–43 cases**.
+
+**120 parameters fitted on ~40 cases.** The router can fit calibration noise
+while selecting worse experts on unseen data — which is exactly the signature
+observed: training loss falls, confidence ranking stays fine, accuracy drops.
+
+**Design consequence:** `QualityRouter.fit` now counts its own parameters and
+records `params_per_sample` and an `overparameterised` flag in the run log; the
+CLI prints a warning and suggests the fix. Two levers exposed:
+
+```bash
+cgate --router-shared     # share weights across findings: 120 -> 24 params
+cgate --router-l2 0.1     # stronger penalty
+```
+
+Before reporting that quality-aware routing does not work, the low-capacity
+router must be run. A negative result from a model with three times more
+parameters than training cases is a statement about capacity, not about the
+hypothesis.
+
+Still untested and worth trying after that: `RouterConfig.entropy_reg > 0` to
+damp weight collapse, and clipping standardised quality features to the observed
+training range to bound extrapolation.
 
 ## F4 — `ncr_present` is close to degenerate on phantoms
 

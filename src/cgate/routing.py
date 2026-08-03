@@ -72,6 +72,7 @@ class QualityRouter:
         self.W = np.zeros((n_groups, n_experts, n_features), dtype=np.float64)
         self.b = np.zeros((n_groups, n_experts), dtype=np.float64)
         self.history_: list[dict[str, float]] = []
+        self.fit_log_: dict = {}
         self.fitted_: bool = False
 
     # -- forward -----------------------------------------------------------
@@ -139,6 +140,27 @@ class QualityRouter:
             ]
             q_val = np.asarray(q_val, dtype=np.float64)
             labels_val = np.asarray(labels_val, dtype=np.int64)
+
+        # Capacity check. The router has n_groups * n_experts * (n_features + 1)
+        # parameters and is fitted on the calibration split, which is small by
+        # construction. With per-finding weights that is 5 * 3 * 8 = 120
+        # parameters against a few dozen cases -- more parameters than data, and
+        # it shows up as *lower accuracy* rather than as a training-loss
+        # failure, because a softmax mixture can fit calibration noise while
+        # picking worse experts on new cases.
+        n_params = int(self.W.size + self.b.size)
+        self.fit_log_ = {
+            "n_params": n_params,
+            "n_samples": int(n),
+            "params_per_sample": round(n_params / max(n, 1), 2),
+            "overparameterised": bool(n_params > n),
+        }
+        if cfg.verbose and n_params > n:
+            print(
+                f"[router] WARNING: {n_params} parameters fitted on {n} cases. "
+                f"Consider RouterConfig(per_finding=False) "
+                f"({n_params // max(self.n_groups, 1)} params) or a larger l2."
+            )
 
         mW = np.zeros_like(self.W)
         vW = np.zeros_like(self.W)

@@ -193,6 +193,51 @@ def test_router_learns_to_prefer_the_expert_that_is_right():
     assert w[~good, 0, 1].mean() > w[~good, 0, 0].mean()
 
 
+def test_router_reports_its_own_capacity():
+    """A negative routing result must be distinguishable from overfitting."""
+    rng = np.random.default_rng(20)
+    n = 40  # a realistic calibration-split size
+    q = rng.normal(size=(n, 7))
+    experts = [_dummy_probs(n, rng) for _ in range(3)]
+    labels = np.stack(
+        [rng.integers(0, s.n_classes, size=n) for s in FINDING_SCHEMA], axis=1
+    )
+
+    router = QualityRouter(3, 7, RouterConfig(epochs=20))
+    router.fit(q, experts, labels)
+    # 5 findings x 3 experts x (7 features + bias)
+    assert router.fit_log_["n_params"] == 5 * 3 * 8
+    assert router.fit_log_["n_samples"] == n
+    assert router.fit_log_["overparameterised"] is True
+
+
+def test_shared_router_cuts_parameters_fivefold():
+    rng = np.random.default_rng(21)
+    n = 40
+    q = rng.normal(size=(n, 7))
+    experts = [_dummy_probs(n, rng) for _ in range(3)]
+    labels = np.stack(
+        [rng.integers(0, s.n_classes, size=n) for s in FINDING_SCHEMA], axis=1
+    )
+
+    shared = QualityRouter(3, 7, RouterConfig(epochs=20, per_finding=False))
+    shared.fit(q, experts, labels)
+    assert shared.fit_log_["n_params"] == 3 * 8
+    assert shared.fit_log_["overparameterised"] is False
+    # Shared weights still produce a valid, per-finding weight tensor.
+    w = shared.weights(q)
+    assert w.shape == (n, N_FINDINGS, 3)
+    assert np.allclose(w.sum(axis=2), 1.0)
+
+
+def test_shared_router_is_also_uniform_at_initialisation():
+    rng = np.random.default_rng(22)
+    n = 10
+    q = rng.normal(size=(n, 5))
+    router = QualityRouter(3, 5, RouterConfig(per_finding=False))
+    assert np.allclose(router.weights(q), uniform_weights(n, 3))
+
+
 def test_router_training_reduces_loss():
     rng = np.random.default_rng(9)
     n = 120
