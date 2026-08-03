@@ -11,12 +11,15 @@ Mapping to the architecture on the deck:
   GlobalContextExpert -- MLP on axis marginals and moments. Stands in for the ViT.
 
 The last two are explicitly *surrogates*: they consume hand-built views designed
-to mimic what a CNN and a ViT respectively attend to. They exist so the router,
-fusion, calibration and gate can be developed and validated end-to-end before
-the GPU work lands, and so this repository runs on a machine with no torch. They
-are not CNNs and nothing here claims they are. Replacing them with real
-backbones means implementing `fit`/`predict_proba` in cgate/experts/torch_experts.py;
-no other module changes.
+to mimic what a CNN and a ViT respectively attend to. They are not CNNs and
+nothing here claims they are.
+
+The real backbones now exist in `torch_experts.py` (`--experts torch`). These are
+kept because they need no torch, run in seconds, and are useful for iterating on
+the routing/calibration/gate logic. They are **not** evidence about CNN or ViT
+behaviour: their feature views were designed to degrade under different defects,
+so any conclusion about routing drawn from them is partly a statement about that
+design rather than about the hypothesis.
 """
 
 from __future__ import annotations
