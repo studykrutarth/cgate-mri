@@ -19,63 +19,63 @@ network can be fused at all — see `docs/` and `cgate/schema.py`.
 
 ## Current experts
 
-| Class | View | Model | Real or surrogate |
-|---|---|---|---|
-| `TextureRadiomicsExpert` | `texture` | HistGradientBoosting | **real** — the PyRadiomics + XGBoost expert |
-| `LocalPatternExpert` | `local` | MLP | **surrogate** for the CNN |
-| `GlobalContextExpert` | `global` | MLP | **surrogate** for the ViT |
-| `DropoutEnsembleExpert` | `local` | bagged MLPs + feature dropout | **surrogate** for MC dropout |
-| `HomogeneousEnsemble` | `local` | 3× MLP, different seeds | **real** deep ensemble |
+### Real backbones — `--experts torch`
 
-### Why surrogates exist
+| Class | View | Model |
+|---|---|---|
+| `TextureRadiomicsExpert` | `texture` | HistGradientBoosting — the PyRadiomics + XGBoost expert |
+| `CNNExpert` | `volume` | ResNet on 2-D slices, via timm |
+| `ViTExpert` | `volume` | ViT-S/16 on 2-D slices, via timm |
+| `MCDropoutExpert` | `volume` | ResNet with dropout active at inference, N passes averaged |
 
-`torch` has no wheel for the Python 3.14 interpreter this repo was developed on.
-Rather than block the whole project on that, the CNN and ViT are stood in by MLPs
-consuming deliberately different hand-built feature views:
+### scikit-learn surrogates — `--experts surrogate`
 
-- `texture` — first-order and gradient statistics. Noise destroys it first.
-- `local` — block-mean grid ("what is bright, and where"). Bias field breaks it.
-- `global` — axis marginals and moments. Blur and ghosting break it.
+| Class | View | Model |
+|---|---|---|
+| `LocalPatternExpert` | `local` | MLP — CNN stand-in |
+| `GlobalContextExpert` | `global` | MLP — ViT stand-in |
+| `DropoutEnsembleExpert` | `local` | bagged MLPs + feature dropout — MC-dropout stand-in |
+| `HomogeneousEnsemble` | `local` | 3× MLP, different seeds — deep-ensemble control |
 
-The views are chosen so the three experts **fail under different acquisition
-defects**, which is the phenomenon the router is supposed to exploit. Without
-that, the ensemble would be three correlated models and routing could not help
-by construction.
+Kept because they run anywhere with no torch and iterate in seconds, which is
+useful when working on the routing/calibration/gate logic. **They are not
+evidence about CNN or ViT behaviour.** Their feature views were hand-designed to
+degrade under different defects, so any conclusion about routing drawn from them
+is partly a statement about that design.
 
-**Nothing in the code claims these are CNNs or ViTs.** They are named
-`cnn_surrogate` / `vit_surrogate`, and every table that reports them says so.
+## How pixels reach the expert interface
 
-## Adding the real torch experts
+The interface is tabular — `fit(x, labels)` where `x` is a feature matrix — but a
+CNN needs images. The `volume` view resolves this: it is a single column of row
+indices into a `SliceCache` (`cgate/data/slices.py`), built during ingest. The
+expert turns those rows into pixels itself, and no other component changes.
 
-Create `cgate/experts/torch_experts.py`:
+Slice selection is **label-free by construction**: `select_slice_indices` takes
+only `(volumes, config)` and there is a test asserting it has no mask parameter.
+Choosing "the slice with the biggest tumour" would read a mask that does not
+exist at inference and would inflate every reported number.
 
-```python
-class CNNExpert:
-    name = "cnn"
-    view = "volume"          # a new view returning the array itself
+## Adding another torch expert
 
-    def fit(self, x, labels): ...
-    def predict_proba(self, x): ...   # -> list[np.ndarray], one per finding
-```
+Subclass `TorchSliceExpert` and set `arch`, or implement the contract directly.
+Three things to keep:
 
-Then:
+- **Reuse `align_proba`** for anything scikit-learn-shaped. A class absent from a
+  training split yields a too-narrow probability array that silently misaligns
+  against label indices.
+- **Respect `PROB_FLOOR`.** No expert may emit exactly zero — a hard zero makes
+  NLL infinite and poisons temperature scaling and every calibration metric.
+- **Do not flip left-right in augmentation.** It mirrors the hemisphere and
+  inverts the `laterality` label while the target stays put. `TorchExpertConfig`
+  flips anterior-posterior only.
 
-1. Add a `volume` view in `cgate/data/features.py` (or bypass views and load
-   volumes lazily by patient id, if memory forces it).
-2. Register the class in `EXPERT_REGISTRY` and swap it into
-   `build_default_experts`.
-3. Nothing else changes — pipeline, router, calibration, gate and the ablation
-   grid are all written against the contract above.
+### Windows note
 
-Two things to keep when you do:
-
-- **Reuse `align_proba`.** scikit-learn and torch both give you only the classes
-  seen in training; a rare finding absent from a split produces a
-  too-narrow probability array that silently misaligns against label indices.
-- **Respect `PROB_FLOOR`.** No expert may emit exactly zero for any class — a
-  hard zero makes NLL infinite and poisons temperature scaling and every
-  calibration metric downstream.
-
-For genuine MC dropout, keep dropout layers active at inference and average N
-stochastic forward passes; that replaces `DropoutEnsembleExpert` and the
-ablation table keeps the same row (B2).
+`torch.set_num_threads(1)` is applied on first use. scikit-learn/scipy load
+Intel MKL's OpenMP runtime and torch loads its own; with both spawning thread
+teams in one process, torch's backward pass dies with an access violation. Since
+this pipeline runs a scikit-learn radiomics expert alongside a torch CNN, that
+is the normal configuration. Capping torch's threads avoids it without the
+global `KMP_DUPLICATE_LIB_OK=TRUE` workaround, which Intel documents as able to
+crash or silently produce wrong results. Set `TorchExpertConfig.num_threads=None`
+to opt out.

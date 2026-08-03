@@ -37,7 +37,27 @@ def _require_sklearn():
         ) from exc
 
 
-def _boosted_factory(seed: int):
+def _early_stopping_viable(y, min_per_class: int = 8, min_total: int = 50) -> bool:
+    """Whether an internal stratified validation split can actually be made.
+
+    scikit-learn implements early stopping by holding out a stratified slice of
+    the training data. That raises outright when any class has fewer than two
+    members, and is unreliable when a class has only a handful -- both routine
+    for a rare finding on a small split. Rather than let one degenerate finding
+    kill an entire run, early stopping is switched off for that finding and the
+    explicit regularisation (l2, min_samples_leaf, alpha) carries the load.
+    """
+    if y is None:
+        return False
+    y = np.asarray(y)
+    if y.size < min_total:
+        return False
+    counts = np.bincount(y.astype(int))
+    counts = counts[counts > 0]
+    return bool(counts.size >= 2 and counts.min() >= min_per_class)
+
+
+def _boosted_factory(seed: int, y=None):
     _require_sklearn()
     from sklearn.ensemble import HistGradientBoostingClassifier
 
@@ -48,14 +68,14 @@ def _boosted_factory(seed: int):
         # Small cohorts overfit trees fast; these two are the main guards.
         min_samples_leaf=8,
         l2_regularization=1.0,
-        early_stopping=True,
+        early_stopping=_early_stopping_viable(y),
         n_iter_no_change=20,
         validation_fraction=0.15,
         random_state=seed,
     )
 
 
-def _mlp_factory(hidden: tuple[int, ...], alpha: float, seed: int):
+def _mlp_factory(hidden: tuple[int, ...], alpha: float, seed: int, y=None):
     _require_sklearn()
     from sklearn.neural_network import MLPClassifier
     from sklearn.pipeline import make_pipeline
@@ -69,7 +89,7 @@ def _mlp_factory(hidden: tuple[int, ...], alpha: float, seed: int):
             hidden_layer_sizes=hidden,
             alpha=alpha,
             max_iter=1200,
-            early_stopping=True,
+            early_stopping=_early_stopping_viable(y),
             n_iter_no_change=25,
             validation_fraction=0.15,
             random_state=seed,
@@ -91,7 +111,7 @@ class LocalPatternExpert(MultiFindingExpert):
         super().__init__(
             name=name,
             view="local",
-            estimator_factory=lambda s: _mlp_factory((64, 32), 1e-2, s),
+            estimator_factory=lambda s, y=None: _mlp_factory((64, 32), 1e-2, s, y),
             seed=seed,
         )
 
@@ -103,7 +123,7 @@ class GlobalContextExpert(MultiFindingExpert):
         super().__init__(
             name=name,
             view="global",
-            estimator_factory=lambda s: _mlp_factory((48,), 3e-2, s),
+            estimator_factory=lambda s, y=None: _mlp_factory((48,), 3e-2, s, y),
             seed=seed,
         )
 

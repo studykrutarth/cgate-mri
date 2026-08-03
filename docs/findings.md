@@ -210,6 +210,22 @@ finding there mostly adds noise to the gate.
 
 ## Standing caveats
 
+> **F1-F3d are provisional and must be re-run.** Every number above was produced
+> with `--experts surrogate`: scikit-learn MLPs on three hand-built feature views
+> (texture / local / global) that *I designed* to degrade under different
+> acquisition defects. Routing was therefore tested on a bench where the
+> differential-degradation premise it depends on was authored rather than
+> observed — so "routing does not help" is at least as much a statement about
+> the bench as about the hypothesis.
+>
+> Real ResNet/ViT backbones (`--experts torch`) have genuinely different
+> inductive biases and give that premise its first fair test. Re-run the grid
+> before drawing any conclusion:
+>
+> ```bash
+> cgate --experts torch --arch resnet50 --pretrained --n-cases 400
+> ```
+
 - Every number here is from phantoms with **surrogate** CNN/ViT/MC-dropout
   experts. Treat them as tests of the machinery.
 - Single seed. Re-run across several `--seed` values before believing any gap;

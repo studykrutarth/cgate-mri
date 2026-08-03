@@ -203,20 +203,29 @@ Report both protocols.
 |---|---|
 | IQMs, findings, fusion, router, calibration, gate, metrics | ✅ implemented, numpy-only, tested |
 | Radiomics expert (gradient-boosted trees) | ✅ real |
-| CNN / ViT experts | ⚠️ **surrogates** — MLPs on hand-built views |
-| MC dropout | ⚠️ **surrogate** — bootstrap + feature dropout |
+| CNN expert (ResNet on 2-D slices) | ✅ real, `--experts torch` |
+| ViT expert (ViT-S/16 on 2-D slices) | ✅ real, `--experts torch` |
+| MC dropout (B2) | ✅ real — dropout active at inference, N passes averaged |
+| Slice cache (label-free selection) | ✅ implemented, tested |
+| scikit-learn surrogates | ✅ retained as the no-torch fallback |
 | Real BraTS loader (2021 + Africa naming) | ✅ implemented, untested against real files |
 
-`torch` has no wheel for the Python 3.14 interpreter on this machine, so the CNN
-and ViT experts are stood in by MLPs consuming deliberately different feature
-views (texture / local / global) chosen to degrade under different acquisition
-defects. **Nothing in the code claims these are CNNs.** Replacing them means
-implementing `fit`/`predict_proba` in `experts/torch_experts.py`; no other module
-changes.
+```bash
+cgate --experts torch --arch resnet50 --pretrained --epochs 12   # real backbones
+cgate --experts surrogate                                        # no torch needed
+```
 
-The core contributions — routing, calibration, gating, selective-prediction
-metrics — are real and complete, and are what the surrogates exist to let us
-develop and validate end-to-end before GPU work lands.
+Both families are kept. `surrogate` runs anywhere and is useful for fast
+iteration on the routing/calibration/gate logic; `torch` is the one that
+constitutes evidence about CNN/ViT behaviour. Every run records which was used
+under `"experts"` in its JSON, because the two are **not** interchangeable as
+evidence and the difference is invisible in the numbers.
+
+> **Correction.** Earlier revisions of this file claimed torch had no wheel for
+> Python 3.14. That was wrong — it was inferred from an `ImportError` (meaning
+> "not installed") without checking availability. PyPI has `cp314` wheels from
+> torch 2.9.0 onward. Results in `docs/findings.md` predating this were produced
+> with surrogates and are flagged there as provisional.
 
 ---
 

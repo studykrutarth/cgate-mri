@@ -104,7 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --protocol external, share of the target cohort lent to "
         "calibration instead of test (e.g. 0.15). With the default of 0, the "
         "router is fitted only on the source cohort and must extrapolate into "
-        "quality it never saw — measured to make routing worse than uniform "
+        "quality it never saw -- measured to make routing worse than uniform "
         "fusion under shift. Mirrors obtaining a small labelled sample from a "
         "new site.",
     )
@@ -137,6 +137,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory for risk-coverage and reliability figures (needs matplotlib)",
     )
     p.add_argument(
+        "--experts",
+        choices=("surrogate", "torch"),
+        default="surrogate",
+        help="surrogate: scikit-learn MLPs on hand-built feature views (no "
+        "torch needed). torch: real ResNet-50 / ViT-S/16 on 2-D slices, with "
+        "genuine MC dropout for B2. Only 'torch' constitutes evidence about "
+        "CNN/ViT behaviour.",
+    )
+    p.add_argument(
+        "--slice-cache",
+        type=Path,
+        default=None,
+        help="directory for the slice cache (default: <out dir>/cache). Built "
+        "during ingest when --experts torch.",
+    )
+    p.add_argument("--epochs", type=int, default=8, help="epochs per torch expert")
+    p.add_argument(
+        "--n-slices",
+        type=int,
+        default=16,
+        help="slices cached per case for the torch experts. Selection is "
+        "label-free (never reads the mask); see cgate.data.slices.",
+    )
+    p.add_argument(
+        "--arch", default="resnet18", help="timm backbone for the CNN expert"
+    )
+    p.add_argument(
+        "--img-size", type=int, default=128, help="input size fed to the backbone"
+    )
+    p.add_argument(
+        "--pretrained",
+        action="store_true",
+        help="use ImageNet-pretrained weights (downloads on first use). Strongly "
+        "recommended for real data: ~1200 cases is far too few to train a ViT "
+        "from scratch.",
+    )
+    p.add_argument(
         "--router-shared",
         action="store_true",
         help="share router weights across findings instead of fitting one set "
@@ -162,6 +199,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def load_table(args) -> CaseTable:
+    cache_root = None
+    slice_config = None
+    if args.experts == "torch":
+        from ..data.slices import SliceCacheConfig
+
+        cache_root = args.slice_cache or (
+            (args.out.parent if args.out else Path("runs")) / "cache"
+        )
+        slice_config = SliceCacheConfig(n_slices=args.n_slices)
+
     if args.data == "synthetic":
         cfg = SyntheticConfig(
             shape=tuple(args.shape),
@@ -169,13 +216,21 @@ def load_table(args) -> CaseTable:
             low_quality_fraction=args.low_quality_fraction,
             seed=args.seed,
         )
-        return ingest_cases(build_synthetic_dataset(cfg))
+        return ingest_cases(
+            build_synthetic_dataset(cfg),
+            slice_cache_root=cache_root,
+            slice_config=slice_config,
+        )
 
     if args.root is None:
         raise SystemExit("--root is required when --data brats is used")
     from ..data.brats import load_brats_cases
 
-    return ingest_cases(load_brats_cases(args.root))
+    return ingest_cases(
+        load_brats_cases(args.root),
+        slice_cache_root=cache_root,
+        slice_config=slice_config,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -232,6 +287,35 @@ def main(argv: list[str] | None = None) -> int:
             pretty = "  ".join(f"{k}={v:.2f}" for k, v in dist.items())
             print(f"  {finding:<13} {pretty}")
 
+    torch_config = None
+    if args.experts == "torch":
+        from ..experts.torch_experts import TorchExpertConfig
+
+        torch_config = TorchExpertConfig(
+            arch=args.arch,
+            img_size=args.img_size,
+            pretrained=args.pretrained,
+            epochs=args.epochs,
+            seed=args.seed,
+        )
+        if verbose:
+            import torch as _t
+
+            dev = "cuda" if _t.cuda.is_available() else "cpu"
+            print(
+                f"\nExperts: REAL torch backbones ({args.arch}, {args.img_size}px, "
+                f"pretrained={args.pretrained}, {args.epochs} epochs) on {dev}"
+            )
+            if dev == "cpu":
+                print(
+                    "  Note: no CUDA here. Fine for a smoke run; use Colab for real training."
+                )
+    elif verbose:
+        print(
+            "\nExperts: scikit-learn SURROGATES (not CNN/ViT). "
+            "Pass --experts torch for real backbones."
+        )
+
     if verbose:
         print("\nRunning ablations:")
     results = run_ablations(
@@ -246,6 +330,8 @@ def main(argv: list[str] | None = None) -> int:
             l2=args.router_l2 if args.router_l2 is not None else RouterConfig.l2,
         ),
         verbose=verbose,
+        use_torch=args.experts == "torch",
+        torch_config=torch_config,
     )
 
     cap = results.get("B6", {}).get("fit_log", {}).get("router_capacity")
@@ -328,6 +414,9 @@ def main(argv: list[str] | None = None) -> int:
             "results": _to_jsonable(results),
             "comparison": _to_jsonable(comparison),
             "synthetic": args.data == "synthetic",
+            # Recorded because surrogate and torch runs are not interchangeable
+            # as evidence, and the distinction is invisible in the numbers.
+            "experts": args.experts,
         }
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(json.dumps(payload, indent=2), encoding="utf8")
@@ -349,3 +438,4 @@ def _comparison_scopes(table: CaseTable, res: dict):
 
 if __name__ == "__main__":
     sys.exit(main())
+

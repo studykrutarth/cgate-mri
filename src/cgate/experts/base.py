@@ -95,7 +95,10 @@ class MultiFindingExpert:
         self.classes_ = []
         for j, spec in enumerate(FINDING_SCHEMA):
             y = labels[:, j]
-            model = self._factory(self.seed + j)
+            # The factory is given the labels so it can adapt hyperparameters
+            # to the data it will actually see -- notably whether an internal
+            # stratified validation split is viable. See _boosted_factory.
+            model = self._factory(self.seed + j, y)
             uniq = np.unique(y)
             if uniq.size < 2:
                 # Degenerate finding on this split: a classifier cannot be fitted.

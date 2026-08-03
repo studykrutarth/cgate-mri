@@ -51,6 +51,9 @@ class CaseTable:
     measurements: list[dict[str, float]]
     labels: np.ndarray | None = None
     iqm_names: tuple[str, ...] = ROUTER_FEATURES
+    # Present only when ingest built one. The torch experts read pixels through
+    # this; the tabular experts ignore it entirely.
+    slice_cache: object | None = None
 
     @property
     def n_cases(self) -> int:
@@ -60,7 +63,12 @@ class CaseTable:
         self.labels = extractor.labels_from_measurements(self.measurements)
 
 
-def ingest_cases(cases, modality_for_quality: int = 3) -> CaseTable:
+def ingest_cases(
+    cases,
+    modality_for_quality: int = 3,
+    slice_cache_root=None,
+    slice_config=None,
+) -> CaseTable:
     """Stream cases, reduce each to features/IQMs/measurements, discard volumes.
 
     IQMs are computed on one modality (FLAIR by default) rather than averaged
@@ -75,6 +83,14 @@ def ingest_cases(cases, modality_for_quality: int = 3) -> CaseTable:
     view_rows: dict[str, list[np.ndarray]] = {v: [] for v in FEATURE_VIEWS}
     measurements: list[dict[str, float]] = []
 
+    # Slices are written during this same pass: the case stream is consumable
+    # once, and volumes are discarded immediately afterwards.
+    writer = None
+    if slice_cache_root is not None:
+        from .data.slices import SliceCacheWriter
+
+        writer = SliceCacheWriter(slice_cache_root, slice_config)
+
     for case in cases:
         vols = case.volumes
         brain = case.brain_mask
@@ -85,6 +101,9 @@ def ingest_cases(cases, modality_for_quality: int = 3) -> CaseTable:
         for name in FEATURE_VIEWS:
             view_rows[name].append(views[name])
 
+        if writer is not None:
+            writer.add(case)
+
         measurements.append(measure(case.mask))
         patient_ids.append(case.patient_id)
         cohorts.append(case.cohort)
@@ -93,13 +112,22 @@ def ingest_cases(cases, modality_for_quality: int = 3) -> CaseTable:
     if not patient_ids:
         raise ValueError("no cases were ingested")
 
+    views_out = {k: np.vstack(v) for k, v in view_rows.items()}
+    cache = writer.close() if writer is not None else None
+    if cache is not None:
+        # The 'volume' view is a single column of cache row indices. That is how
+        # pixels reach an interface built around tabular features without
+        # changing the interface every other component depends on.
+        views_out["volume"] = cache.rows_for(patient_ids).reshape(-1, 1)
+
     return CaseTable(
         patient_ids=np.asarray(patient_ids),
         cohorts=np.asarray(cohorts),
         quality_level=np.asarray(quality, dtype=np.float64),
         iqms=np.vstack(iqm_rows),
-        views={k: np.vstack(v) for k, v in view_rows.items()},
+        views=views_out,
         measurements=measurements,
+        slice_cache=cache,
     )
 
 
