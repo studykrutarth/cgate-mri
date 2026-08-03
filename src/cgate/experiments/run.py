@@ -41,11 +41,18 @@ SYNTHETIC_BANNER = """
 
 
 def _to_jsonable(obj):
-    """Drop the private arrays and make numpy types JSON-serialisable."""
+    """Drop the private arrays and make values JSON-serialisable.
+
+    Path is handled here rather than by stringifying individual arguments at
+    the call site: every new `type=Path` CLI flag would otherwise crash the
+    JSON dump at the very end of a run, after all the expensive work is done.
+    """
     if isinstance(obj, dict):
         return {k: _to_jsonable(v) for k, v in obj.items() if not k.startswith("_")}
     if isinstance(obj, (list, tuple)):
         return [_to_jsonable(v) for v in obj]
+    if isinstance(obj, Path):
+        return str(obj)
     if isinstance(obj, np.generic):
         return obj.item()
     if isinstance(obj, np.ndarray):
@@ -89,6 +96,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--test-cohort",
         default="low",
         help="cohort held out as test when --protocol external",
+    )
+    p.add_argument(
+        "--calib-target-fraction",
+        type=float,
+        default=0.0,
+        help="with --protocol external, share of the target cohort lent to "
+        "calibration instead of test (e.g. 0.15). With the default of 0, the "
+        "router is fitted only on the source cohort and must extrapolate into "
+        "quality it never saw — measured to make routing worse than uniform "
+        "fusion under shift. Mirrors obtaining a small labelled sample from a "
+        "new site.",
     )
     p.add_argument(
         "--target-coverage",
@@ -168,6 +186,7 @@ def main(argv: list[str] | None = None) -> int:
             table.cohorts,
             test_cohort=args.test_cohort,
             seed=args.seed,
+            calib_target_fraction=args.calib_target_fraction,
         )
     else:
         # Patient-level, cohort-stratified. Stratifying on cohort keeps the
@@ -269,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.out:
         payload = {
-            "config": vars(args) | {"root": str(args.root), "out": str(args.out)},
+            "config": _to_jsonable(vars(args)),
             "n_cases": table.n_cases,
             "splits": split_summary(splits, table.cohorts),
             "label_prevalence": label_prevalence(table.labels),

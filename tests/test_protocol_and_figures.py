@@ -1,7 +1,45 @@
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from cgate.data.splits import assert_no_leakage, external_cohort_split
+
+
+# --------------------------------------------------------------------------
+# results serialisation
+# --------------------------------------------------------------------------
+def test_every_path_argument_survives_json_serialisation():
+    """Regression: a Path CLI flag crashed the JSON dump after a full run.
+
+    The dump happens last, so an unserialisable value throws away every result
+    the run just computed. Any `type=Path` flag must round-trip.
+    """
+    from cgate.experiments.run import _to_jsonable, build_parser
+
+    args = build_parser().parse_args(
+        ["--out", "runs/x.json", "--figures", "runs/figs", "--root", "D:/data"]
+    )
+    payload = _to_jsonable(vars(args))
+    restored = json.loads(json.dumps(payload))
+    # Compare via Path so the assertion holds on both Windows and POSIX
+    # separators rather than baking in one platform's convention.
+    assert Path(restored["figures"]) == Path("runs/figs")
+    assert Path(restored["out"]) == Path("runs/x.json")
+    # No Path may survive into the payload, whatever the flag is called.
+    assert not any(isinstance(v, Path) for v in payload.values())
+
+
+def test_to_jsonable_handles_numpy_and_non_finite():
+    from cgate.experiments.run import _to_jsonable
+
+    out = _to_jsonable(
+        {"a": np.float64(1.5), "b": np.arange(3), "c": float("nan"),
+         "d": float("inf"), "_private": "dropped"}
+    )
+    assert out == {"a": 1.5, "b": [0, 1, 2], "c": None, "d": None}
+    json.dumps(out)
 
 
 # --------------------------------------------------------------------------
@@ -53,6 +91,56 @@ def test_external_split_gives_far_more_test_cases_than_a_random_split():
     n_low_strat = int((cohorts[strat["test"]] == "low").sum())
     assert len(ext["test"]) == 146
     assert len(ext["test"]) > 4 * n_low_strat
+
+
+def test_calib_target_fraction_lends_target_cases_to_calibration():
+    ids, cohorts = _cohorts(n_high=60, n_low=40)
+    splits = external_cohort_split(
+        ids, cohorts, test_cohort="low", calib_target_fraction=0.25, seed=0
+    )
+    calib_cohorts = cohorts[splits["calib"]]
+    assert "low" in set(calib_cohorts)
+    assert "high" in set(calib_cohorts)
+    assert int((calib_cohorts == "low").sum()) == 10  # 25% of 40
+
+
+def test_calib_target_fraction_keeps_calib_and_test_disjoint():
+    """Lent patients must leave test, or the reported numbers are circular."""
+    ids, cohorts = _cohorts(n_high=60, n_low=40)
+    splits = external_cohort_split(
+        ids, cohorts, test_cohort="low", calib_target_fraction=0.25, seed=0
+    )
+    assert len(splits["test"]) == 30
+    assert_no_leakage(splits, ids)
+    assert not set(ids[splits["calib"]]) & set(ids[splits["test"]])
+    total = sum(len(v) for v in splits.values())
+    assert total == len(ids)
+
+
+def test_calib_target_fraction_never_empties_the_test_set():
+    ids, cohorts = _cohorts(n_high=20, n_low=5)
+    splits = external_cohort_split(
+        ids, cohorts, test_cohort="low", calib_target_fraction=0.99, seed=0
+    )
+    assert len(splits["test"]) >= 1
+
+
+def test_calib_target_fraction_zero_matches_the_plain_external_split():
+    ids, cohorts = _cohorts()
+    a = external_cohort_split(ids, cohorts, test_cohort="low", seed=3)
+    b = external_cohort_split(
+        ids, cohorts, test_cohort="low", calib_target_fraction=0.0, seed=3
+    )
+    for name in ("train", "calib", "test"):
+        assert np.array_equal(a[name], b[name])
+
+
+def test_external_split_rejects_a_bad_calib_fraction():
+    ids, cohorts = _cohorts()
+    with pytest.raises(ValueError, match="calib_target_fraction"):
+        external_cohort_split(
+            ids, cohorts, test_cohort="low", calib_target_fraction=1.0
+        )
 
 
 def test_external_split_rejects_an_unknown_cohort():

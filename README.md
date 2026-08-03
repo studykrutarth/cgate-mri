@@ -269,4 +269,20 @@ src/cgate/
 docs/
   quality-metrics.md   IQM definitions and the skull-stripping trap
   scope.md             why report generation is not in Project-I
+  findings.md          results observed so far, and what each one changed
 ```
+
+---
+
+## Read this before running the real experiment
+
+`docs/findings.md` records two results that will affect how you set the
+experiment up:
+
+- **A 20% test split on BraTS-Africa (~29 cases) cannot resolve the effect
+  size this project is looking for.** Use `--protocol external`.
+- **A router fitted only on high-quality calibration data made routing *worse*
+  than uniform fusion under shift** (AURC +0.06, gate coverage collapsing from
+  84% to 56%). It has to extrapolate into a quality range it never saw. Run the
+  `--calib-target-fraction` control before concluding anything about the
+  hypothesis.
