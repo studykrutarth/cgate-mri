@@ -199,6 +199,40 @@ def cohort_for_case(case_dir: Path, root: Path) -> str:
     return LOW if any(_looks_low_quality(n) for n in _names_up_to(case_dir, root)) else HIGH
 
 
+# BraTS 2021 labels enhancing tumour 4 and leaves 3 unused. The 2023 challenge
+# renumbered it to 3, and BraTS-Africa ships in the 2023 format. Both are
+# canonicalised to the 2021 convention on load, because everything downstream --
+# REGION_LABELS, region_mask, the ET and TC composites, `et_present`,
+# `et_fraction` -- is written against LABEL_ET = 4.
+LEGACY_ET, MODERN_ET = 4, 3
+
+
+def canonicalise_labels(mask: np.ndarray, context: str = "") -> np.ndarray:
+    """Renumber a 2023-convention segmentation to the 2021 convention.
+
+    Left unhandled this is silent and severe rather than loud: every
+    2023-format case reports no enhancing tumour at all, so `et_present`
+    collapses to absent and `et_fraction` to its lowest tercile for that entire
+    cohort. Since BraTS-Africa is the low-quality stratum and BraTS 2021 the
+    high-quality one, the artefact aligns exactly with the contrast this
+    project measures -- it would read as a catastrophic quality effect, and
+    every metric would agree with it.
+    """
+    has_modern = bool(np.any(mask == MODERN_ET))
+    has_legacy = bool(np.any(mask == LEGACY_ET))
+    if has_modern and has_legacy:
+        raise ValueError(
+            f"{context or 'segmentation'}: contains both label 3 and label 4, so "
+            f"the convention cannot be determined. BraTS 2021 uses 4 for "
+            f"enhancing tumour and does not use 3; BraTS 2023 uses 3."
+        )
+    if not has_modern:
+        return mask
+    out = mask.copy()
+    out[mask == MODERN_ET] = LEGACY_ET
+    return out
+
+
 def load_case(case_dir: Path, cohort: str | None = None) -> BratsCase:
     _require_nibabel()
     import nibabel as nib
@@ -221,6 +255,7 @@ def load_case(case_dir: Path, cohort: str | None = None) -> BratsCase:
     if seg_path is None:
         raise FileNotFoundError(f"{case_dir.name}: no segmentation file found")
     mask = np.asarray(nib.load(str(seg_path)).dataobj).astype(np.int16)
+    mask = canonicalise_labels(mask, context=case_dir.name)
 
     vols = np.stack(volumes, axis=0)
     if vols.shape[1:] != mask.shape:

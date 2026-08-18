@@ -326,6 +326,57 @@ runs, which touch none of this. The F5 smoke runs were already void.
 
 ---
 
+## F7 — BraTS 2023 renumbered enhancing tumour, and it aligned with the cohort split
+
+The first real-data run. 95 BraTS-Africa gliomas, GPU, full grid. It reported:
+
+```
+et_present    absent=1.00  present=0.00
+et_fraction   low=1.00     mid=0.00   high=0.00
+```
+
+No enhancing tumour in any of 95 gliomas, which is not a plausible cohort.
+
+**Cause.** BraTS 2021 labels enhancing tumour `4` and leaves `3` unused;
+`schema.py` encoded that, with a comment saying so. The 2023 challenge
+renumbered ET to `3`, and BraTS-Africa ships in the 2023 format. Confirmed
+directly on the files:
+
+| cohort | NCR | ED | ET |
+|---|---|---|---|
+| BraTS 2021 | 1 | 2 | **4** |
+| BraTS-Africa | 1 | 2 | **3** |
+
+So `region_mask(mask, "ET")` matched nothing on every Africa case, and `TC`
+silently lost its enhancing component too.
+
+**Why this one was dangerous rather than merely wrong.** The artefact does not
+fall randomly across the study — it falls *exactly* on the cohort boundary.
+BraTS 2021 is the high-quality training cohort and parses correctly; BraTS-Africa
+is the low-quality test cohort and would have had two of its five findings
+constant. Under `--protocol external` that reads as a model which handles
+enhancing tumour well at 3 T and fails completely at 1.5 T — a large, clean,
+entirely fictitious quality effect, pointing the same way as the hypothesis, and
+agreed on by every metric in the grid. Accuracy, AURC, ECE and the gate would
+all have corroborated it. Nothing in the pipeline could have caught it
+downstream, because the labels and the images would have been perfectly
+consistent with each other.
+
+**Fix.** `canonicalise_labels` in the loader renumbers 3 to 4 on read, so
+everything downstream keeps one convention. A mask containing both raises
+rather than guessing. Verified on the real files: ET now measures 21k-82k voxels
+per case where it previously measured zero.
+
+**Consequence for the record:** the pilot run is void and is being re-run. No
+earlier result is affected — F1-F3d are synthetic, where the generator emits
+label 4 directly.
+
+**What it says about the remaining ingest:** nothing else in the study is
+verified against real data yet. This one surfaced within minutes of the first
+real cohort touching the code; the honest expectation is that more will.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced

@@ -219,6 +219,70 @@ def test_empty_root_says_so(tmp_path):
         list(load_brats_roots([tmp_path / "nothing"]))
 
 
+# -- the 2021 / 2023 label renumbering --------------------------------------
+
+
+def test_modern_enhancing_tumour_label_is_canonicalised():
+    """BraTS 2023 renumbered enhancing tumour from 4 to 3.
+
+    Everything downstream is written against LABEL_ET = 4, so an unconverted
+    2023 mask reports no enhancing tumour at all.
+    """
+    from cgate.data.brats import canonicalise_labels
+
+    mask = np.array([0, 1, 2, 3], dtype=np.int16)
+    out = canonicalise_labels(mask)
+    assert out.tolist() == [0, 1, 2, 4]
+    assert mask.tolist() == [0, 1, 2, 3], "input was mutated"
+
+
+def test_legacy_labels_pass_through_untouched():
+    from cgate.data.brats import canonicalise_labels
+
+    mask = np.array([0, 1, 2, 4], dtype=np.int16)
+    assert canonicalise_labels(mask).tolist() == [0, 1, 2, 4]
+
+
+def test_a_mask_using_both_conventions_is_rejected():
+    """Neither reading is safe, so guessing is worse than stopping."""
+    from cgate.data.brats import canonicalise_labels
+
+    with pytest.raises(ValueError, match="both label 3 and label 4"):
+        canonicalise_labels(np.array([1, 2, 3, 4], dtype=np.int16), context="case-x")
+
+
+def test_a_mask_without_enhancing_tumour_is_left_alone():
+    from cgate.data.brats import canonicalise_labels
+
+    mask = np.array([0, 1, 2], dtype=np.int16)
+    assert canonicalise_labels(mask).tolist() == [0, 1, 2]
+
+
+def test_enhancing_tumour_survives_loading_a_2023_style_case(tmp_path):
+    """End to end: a 2023-format case must report ET through region_volumes."""
+    from cgate.data.brats import load_case
+    from cgate.findings import region_volumes
+
+    nib = pytest.importorskip("nibabel")
+    case_dir = tmp_path / "BraTS-SSA-00002-000"
+    case_dir.mkdir()
+    seg = np.zeros(SHAPE, dtype=np.int16)
+    seg[1:3, 1:3, 1:3] = 1
+    seg[3:5, 1:3, 1:3] = 2
+    seg[5:7, 1:3, 1:3] = 3  # enhancing tumour, 2023 numbering
+    for suffix in AFRICA_SUFFIXES:
+        data = seg if suffix == "seg" else np.ones(SHAPE, dtype=np.float32)
+        nib.save(
+            nib.Nifti1Image(data, LAS_AFFINE),
+            case_dir / f"{case_dir.name}-{suffix}.nii.gz",
+        )
+
+    case = load_case(case_dir)
+    vols = region_volumes(case.mask)
+    assert vols["ET"] == 8, "enhancing tumour was lost in translation"
+    assert vols["WT"] == 24
+
+
 # -- links, which the walk follows and the ancestor scan used to trip over ----
 
 
