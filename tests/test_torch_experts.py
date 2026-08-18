@@ -174,14 +174,61 @@ def test_disabled_autocast_leaves_the_cpu_path_alone(cache, labels):
     """
     import torch
 
-    a = CNNExpert(cache, _tiny_config(amp=False, epochs=1), seed=3)
+    # Pinned to cpu: on a CUDA machine amp=None resolves to True, and the two
+    # would differ by device as well as precision.
+    a = CNNExpert(cache, _tiny_config(amp=False, device="cpu", epochs=1), seed=3)
     a.fit(_rows(cache), labels)
-    b = CNNExpert(cache, _tiny_config(amp=None, epochs=1), seed=3)
+    b = CNNExpert(cache, _tiny_config(amp=None, device="cpu", epochs=1), seed=3)
     b.fit(_rows(cache), labels)
-    assert b.device == torch.device("cpu"), "test assumes no CUDA here"
+    assert a.device == torch.device("cpu") and b.device == torch.device("cpu")
+    assert b._amp_enabled() is False
 
     for pa, pb in zip(a.predict_proba(_rows(cache)), b.predict_proba(_rows(cache))):
         np.testing.assert_array_equal(pa, pb)
+
+
+requires_cuda = pytest.mark.skipif(
+    not torch.cuda.is_available(), reason="needs a CUDA device"
+)
+
+
+@requires_cuda
+@pytest.mark.slow
+def test_fp16_autocast_trains_on_the_gpu(cache, labels):
+    """The path CPU bfloat16 cannot exercise.
+
+    On CUDA autocast is fp16 and the GradScaler actually has infinities to
+    skip, so the scale/step/update loop takes branches that never run on CPU.
+    """
+    expert = CNNExpert(cache, _tiny_config(amp=True, device="cuda", epochs=1))
+    expert.fit(_rows(cache), labels)
+    assert expert._amp_enabled() is True
+    assert expert.device.type == "cuda"
+
+    probs = expert.predict_proba(_rows(cache))
+    # Probabilities must come back fp32 and on the host, or the floor and the
+    # simplex checks downstream are being applied to fp16.
+    validate_probs(probs, context="cuda amp")
+    for spec, p in zip(FINDING_SCHEMA, probs):
+        assert p.dtype == np.float64
+        assert p.shape == (N_CASES, spec.n_classes)
+
+
+@requires_cuda
+@pytest.mark.slow
+def test_gpu_and_cpu_agree_within_tolerance(cache, labels):
+    """Same seed, same architecture, different device and precision.
+
+    Not bit-identical -- fp16 and a different BLAS see to that -- but a large
+    divergence would mean the GPU path is training something else.
+    """
+    cpu = CNNExpert(cache, _tiny_config(device="cpu", amp=False, epochs=1), seed=5)
+    cpu.fit(_rows(cache), labels)
+    gpu = CNNExpert(cache, _tiny_config(device="cuda", amp=True, epochs=1), seed=5)
+    gpu.fit(_rows(cache), labels)
+
+    for pc, pg in zip(cpu.predict_proba(_rows(cache)), gpu.predict_proba(_rows(cache))):
+        assert np.abs(pc - pg).max() < 0.35, "GPU and CPU paths diverged"
 
 
 def test_out_of_memory_names_the_flags_that_fix_it(cache, labels, monkeypatch):
