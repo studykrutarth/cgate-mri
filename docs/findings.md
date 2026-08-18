@@ -206,6 +206,124 @@ dropping the finding from the critical set if it stays this skewed. The critical
 set is what case-level confidence takes its minimum over, so a near-constant
 finding there mostly adds noise to the gate.
 
+## F5 — Three bugs in the torch path, found before the first real run
+
+Preparing the BraTS 2021 → BraTS-Africa run surfaced three defects that all
+shared a property: each produced plausible numbers rather than an error, and
+each would have invalidated a different part of the grid.
+
+**1. Every BraTS-Africa case was labelled `cohort="high"`.** The distributed
+package nests a tumour-type level the loader did not expect:
+
+```
+PKG - BraTS-Africa/BraTS-Africa/95_Glioma/BraTS-SSA-00002-000/
+```
+
+The loader walked exactly two levels and read the cohort from the case's
+immediate parent — `95_Glioma`, which carries no Africa marker. Measured on the
+real download: 146 cases found, 146 tagged `high`. Pointed one level higher it
+found **zero** cases instead. Under `--protocol external` this does not fail; it
+silently merges the target cohort into the source cohort, and the headline
+comparison then measures nothing at all.
+
+Cases are now discovered at any depth, and the cohort is read from the case
+directory's own name and every ancestor up to the supplied root.
+`BraTS-SSA-00002-000` identifies itself, so the answer no longer depends on how
+the archive was unpacked.
+
+**2. `--arch resnet50` silently rebuilt the ViT as a second ResNet-50.**
+`ViTExpert` took the shared config whole, including its `arch` field, so B4–B6
+fused radiomics with two copies of one architecture while still being reported
+as "Radiomics + CNN + ViT". That removes exactly the heterogeneity those rows
+exist to isolate — and F1, the one result with any support, is the heterogeneity
+result. The ViT now carries its own `--vit-arch` / `--vit-img-size`.
+
+**3. B3's three-seed deep ensemble was three identical models.** Every expert in
+a row is handed the same `TorchExpertConfig` instance, and each constructor did
+`cfg.seed = seed`, writing through to all of them. The last expert constructed
+set the seed for the whole row, so B3's members trained from one initialisation
+on one batch order. B3 is the control that separates ensembling from
+heterogeneity; collapsed to a single model it makes B4-vs-B3 unreadable.
+Configs are now copied per expert, never mutated.
+
+**Consequence for the record:** `runs/torch_run{1,2,3}.json` were produced with
+all three defects present and are void. They were smoke runs (64 cases, 12 test
+cases, 1 epoch) and were never cited as results, but B3 scoring `acc=0.000,
+AURC=1.000` in them is now explained rather than mysterious.
+
+**What this says about the surrogate findings above:** nothing directly — F1–F3d
+were produced with `--experts surrogate`, which touches none of this code. It
+does mean the torch path had never actually been exercised as evidence, only as
+a smoke test, which is why three defects survived in it.
+
+---
+
+## F6 — Six more defects, found by reviewing the F5 fixes
+
+An adversarial review of the F5 changes raised twelve candidates across four
+lenses. Its verification stage never ran — every verify agent died on a session
+limit — so all twelve were adjudicated by hand against the code. Six were real
+and are fixed; the rest were duplicates or restatements of accepted behaviour.
+
+**1. B2 was not MC dropout.** `MCDropoutExpert` did
+`config or TorchExpertConfig(dropout=0.5)`, which reaches 0.5 only when no
+config is passed at all — and `run.py` always passes one, with `dropout` at the
+shared 0.3. So the row whose entire purpose is sampling-based uncertainty
+trained at the same rate as B0/B1/B3, too small for the passes to move apart,
+and came out indistinguishable from B0 (ECE 0.1442 vs 0.1440 in the smoke run)
+with the rate appearing nowhere in the log. This is bug 2 of F5 — a shared
+config silently overriding a row's defining parameter — left in place for
+`dropout` while being fixed for `arch`. The rate now has its own `mc_dropout`
+field. After the fix B2 separates from B0 on its own gate operating point.
+
+**2. A reused table could reconnect to the wrong slice cache.** `load`
+re-derived row indices via `rows_for`, which only checks that every patient id
+*exists* in the cache. A second ingest into the same directory overwrites the
+`.npy` files while keeping every id, so the table reconnected happily and the
+network would train on one study's pixels under another's labels — undetectable
+downstream. The default cache path is `<--out parent>/cache`, shared by every
+run writing to one output directory, and synthetic ids are positional
+(`SYN-0000`), so this needed nothing unusual. Caches now stamp a `build_id` at
+write time and tables pin it; a mismatch raises. Table format bumped to v2.
+
+**3. `--n-slices` was silently ignored on reuse.** The cache fixes the slice
+count and torch reads `cache.n_slices`, but the run log recorded the flag. A
+sweep over `--n-slices` against a cached table therefore produced byte-identical
+results filed under different labels. A mismatch now aborts.
+
+**4. `--rebuild-table` could destroy a real ingest.** The flag re-enters the
+ingest branch keyed on `--data`, which defaults to `synthetic`, and a reuse
+command line deliberately carries neither `--data` nor `--root`. Adding
+`--rebuild-table` to it replaced a multi-hour BraTS table with 30 phantoms and
+reported success. Refused when the saved provenance says `brats`.
+
+**5. A cache-free machine could not use the table at all.** `load` opened the
+recorded slice cache unconditionally, so the workflow the table exists for —
+ingest beside the ~15 GB archive, copy the few-MB table elsewhere, train there —
+died with `FileNotFoundError` for surrogate runs, which never read a pixel.
+`require_slices=False` now tolerates a missing *recorded* cache; an explicitly
+requested one still must exist.
+
+**6. Directory links broke discovery both ways.** `is_dir()` follows junctions
+and symlinks, so a mirrored link made one case reachable by several paths and
+yielded duplicate patient ids — which land in different splits and survive
+`assert_no_leakage`, because by then they are simply two rows. And
+`_names_up_to` resolved both paths before `relative_to`, so a link anywhere
+between root and case put them on different branches, the ancestor scan raised,
+the exception was swallowed, and every case fell back to `"high"` — F5 bug 1
+reintroduced for linked trees. Discovery now dedupes on resolved paths; the
+ancestor scan tries the unresolved form first.
+
+**Accepted, not fixed:** `cohort_for_case` uses `any` over the case name *and*
+its ancestors up to and including `root`, so pointing `--root` at a mixed
+directory named for one cohort marks everything beneath it. Removing `root` from
+the scan would break the ordinary case (`--root .../BraTS-Africa`), which is
+what `infer_cohort` is for. The docstring now states the trade-off, and the run
+prints cohort counts before fitting anything.
+
+**Consequence for the record:** no cited result changes. F1–F3d are surrogate
+runs, which touch none of this. The F5 smoke runs were already void.
+
 ---
 
 ## Standing caveats

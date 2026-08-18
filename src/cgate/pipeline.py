@@ -19,7 +19,9 @@ table.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 
@@ -39,6 +41,13 @@ from .schema import (
 from .selective import ConfidenceGate
 
 
+# Bumped whenever the on-disk table layout changes, so a stale cache fails
+# loudly instead of being read with the wrong column meanings.
+# v2 added slice_cache_build_id. A v1 table has no way to prove which cache it
+# was built against, so it is rejected rather than trusted.
+TABLE_FORMAT_VERSION = 2
+
+
 @dataclass
 class CaseTable:
     """Everything the pipeline needs, after volumes have been discarded."""
@@ -54,6 +63,10 @@ class CaseTable:
     # Present only when ingest built one. The torch experts read pixels through
     # this; the tabular experts ignore it entirely.
     slice_cache: object | None = None
+    # Where the cases came from. Travels with a saved table so a reused one
+    # cannot be reported as synthetic just because --data was left at its
+    # default -- the same reason the expert family is recorded in every run.
+    source: dict = field(default_factory=dict)
 
     @property
     def n_cases(self) -> int:
@@ -61,6 +74,150 @@ class CaseTable:
 
     def assign_labels(self, extractor: FindingExtractor) -> None:
         self.labels = extractor.labels_from_measurements(self.measurements)
+
+    # -- persistence -------------------------------------------------------
+    # Ingest reads every NIfTI in the study, computes IQMs and feature views,
+    # then throws the volumes away. That pass costs far more than fitting the
+    # grid does, and it is repeated identically for every seed and every router
+    # configuration. Saving the table turns "re-read ~1400 volumes" into "read
+    # a few megabytes", which is also what makes it practical to ingest on one
+    # machine and train on another: the raw archive is ~15 GB, the table and its
+    # slice cache are a couple of GB.
+    #
+    # Labels are deliberately not saved. Their tercile edges are fitted on the
+    # train split, so they belong to a run, not to the dataset; persisting them
+    # would let one run's split silently define another run's labels.
+    def save(self, root, source: dict | None = None) -> Path:
+        """Write the table to `root` as arrays.npz + meta.json. Returns `root`."""
+        root = Path(root)
+        root.mkdir(parents=True, exist_ok=True)
+        if source is not None:
+            self.source = source
+
+        arrays = {
+            "patient_ids": np.asarray(self.patient_ids, dtype=str),
+            "cohorts": np.asarray(self.cohorts, dtype=str),
+            "quality_level": np.asarray(self.quality_level, dtype=np.float64),
+            "iqms": np.asarray(self.iqms, dtype=np.float64),
+        }
+        for name, matrix in self.views.items():
+            arrays[f"view__{name}"] = np.asarray(matrix)
+        np.savez_compressed(root / "arrays.npz", **arrays)
+
+        cache_root = getattr(self.slice_cache, "root", None)
+        meta = {
+            "format_version": TABLE_FORMAT_VERSION,
+            "n_cases": self.n_cases,
+            "iqm_names": list(self.iqm_names),
+            "view_names": list(self.views),
+            "measurements": self.measurements,
+            # Recorded so a reloaded table can find its pixels again. Stored as
+            # written; --slice-cache overrides it, because the path that was
+            # right on the ingesting machine is rarely right on the training one.
+            "slice_cache_root": str(cache_root) if cache_root is not None else None,
+            # Pinned so `load` can tell "the cache this table was built against"
+            # from "some other cache that happens to hold the same patients".
+            "slice_cache_build_id": getattr(self.slice_cache, "build_id", None),
+            # Paths here are provenance only and are never validated: the whole
+            # point is that the table can be built on one machine and used on
+            # another, where they do not exist. `data` is load-bearing though —
+            # it is what stops a reused BraTS table being reported as synthetic.
+            "source": self.source,
+        }
+        (root / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf8")
+        return root
+
+    @staticmethod
+    def load(root, slice_cache_root=None, require_slices: bool = True) -> "CaseTable":
+        """Read back a table written by `save`.
+
+        `slice_cache_root` overrides the recorded location of the slice cache.
+
+        `require_slices=False` lets the table load when its recorded cache is
+        gone. The surrogate experts read only the tabular views and never touch
+        a pixel, so demanding the multi-GB cache would block the very workflow
+        the table exists for: ingest beside the ~15 GB archive, copy the few-MB
+        table elsewhere, train from that. An explicit `slice_cache_root` is
+        always honoured strictly — asking for a specific cache and silently
+        getting none would be worse than the error.
+        """
+        root = Path(root)
+        meta_path = root / "meta.json"
+        if not meta_path.exists():
+            raise FileNotFoundError(
+                f"no saved case table at {root} (expected {meta_path.name}). "
+                f"Run an ingest with --table-cache {root} to build one."
+            )
+        meta = json.loads(meta_path.read_text(encoding="utf8"))
+        version = meta.get("format_version")
+        if version != TABLE_FORMAT_VERSION:
+            raise ValueError(
+                f"case table at {root} is format version {version}, this build "
+                f"reads version {TABLE_FORMAT_VERSION}. Re-ingest with --rebuild-table."
+            )
+
+        with np.load(root / "arrays.npz", allow_pickle=False) as data:
+            arrays = {k: data[k] for k in data.files}
+
+        views = {
+            key[len("view__") :]: arrays[key]
+            for key in arrays
+            if key.startswith("view__")
+        }
+        patient_ids = arrays["patient_ids"]
+        measurements = meta["measurements"]
+        if len(measurements) != len(patient_ids):
+            raise ValueError(
+                f"case table at {root} is inconsistent: {len(patient_ids)} patients "
+                f"but {len(measurements)} measurement rows"
+            )
+
+        cache = None
+        cache_root = slice_cache_root or meta.get("slice_cache_root")
+        if cache_root is not None:
+            from .data.slices import SliceCache
+
+            try:
+                cache = SliceCache.open(Path(cache_root))
+            except FileNotFoundError:
+                # Only tolerated for the recorded path: an explicitly requested
+                # cache that is absent stays an error.
+                if require_slices or slice_cache_root is not None:
+                    raise
+                cache = None
+
+        if cache is not None:
+            expected = meta.get("slice_cache_build_id")
+            if expected is not None and cache.build_id != expected:
+                raise ValueError(
+                    f"the slice cache at {cache_root} is not the one this table was "
+                    f"built against (build {cache.build_id} vs {expected}). Its "
+                    f"patient ids may still match while its pixels are from a "
+                    f"different ingest, which would train the network on the wrong "
+                    f"images with the right labels. Point --slice-cache at the "
+                    f"matching cache, or re-ingest with --rebuild-table."
+                )
+            # Re-derive the row indices instead of trusting the saved column.
+            # rows_for raises on a patient the cache does not hold, which turns
+            # a mismatched table/cache pair into an error here rather than into
+            # a network trained on the wrong images with the right labels.
+            views["volume"] = cache.rows_for(patient_ids).reshape(-1, 1)
+        else:
+            # The saved column indexes a cache that is not open; leaving it would
+            # hand the torch experts row numbers pointing at nothing.
+            views.pop("volume", None)
+
+        return CaseTable(
+            patient_ids=patient_ids,
+            cohorts=arrays["cohorts"],
+            quality_level=arrays["quality_level"],
+            iqms=arrays["iqms"],
+            views=views,
+            measurements=measurements,
+            iqm_names=tuple(meta["iqm_names"]),
+            slice_cache=cache,
+            source=meta.get("source", {}),
+        )
 
 
 def ingest_cases(

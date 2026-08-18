@@ -24,7 +24,7 @@ did not help and that is the result we report.
 
 ```bash
 pip install -e ".[sci,dev]"
-pytest -q                                       # 65 tests, ~45s
+pytest -q                                       # 146 tests, ~70s
 cgate --n-cases 400 --figures runs/figs         # ablation grid + plots
 ```
 
@@ -208,12 +208,44 @@ Report both protocols.
 | MC dropout (B2) | ✅ real — dropout active at inference, N passes averaged |
 | Slice cache (label-free selection) | ✅ implemented, tested |
 | scikit-learn surrogates | ✅ retained as the no-torch fallback |
-| Real BraTS loader (2021 + Africa naming) | ✅ implemented, untested against real files |
+| Real BraTS loader (2021 + Africa naming) | ✅ verified against the real BraTS-Africa tree (146 cases, cohorts correct) |
+| Case-table cache (ingest once, train elsewhere) | ✅ implemented, tested |
 
 ```bash
-cgate --experts torch --arch resnet50 --pretrained --epochs 12   # real backbones
+cgate --experts torch --arch resnet50 --vit-arch vit_small_patch16_224 \
+      --pretrained --epochs 12                                   # real backbones
 cgate --experts surrogate                                        # no torch needed
 ```
+
+The CNN and the ViT take **separate** architecture flags. They shared one until
+F5: `--arch resnet50` silently rebuilt the ViT as a second ResNet, and B4–B6
+went on reporting themselves as CNN+ViT while fusing two copies of one
+architecture. Every run now prints both backbones.
+
+### Fitting it on the GPU you have
+
+The device is chosen automatically (`--device` overrides). Memory, not speed, is
+what usually decides whether a run is possible: the stock
+ResNet-50 / 224px / batch-32 configuration needs roughly 5 GB of activations in
+fp32, which a 4 GB card cannot hold.
+
+```bash
+cgate --experts torch --batch-size 8            # the cheapest lever
+cgate --experts torch --amp                     # halves activation memory
+cgate --experts torch --img-size 128            # discards detail, saves a lot
+```
+
+`--amp` defaults to on for CUDA and off for CPU. It roughly halves activation
+memory, and it **changes the numerics** — so it is printed in the run banner and
+recorded in the JSON. A row trained with AMP and a row trained without are two
+different experiments, not two samples of one.
+
+Losses stay in fp32 even under AMP: summing five cross-entropies in fp16 loses
+the small gradients that the rarer finding classes depend on.
+
+When training does run out of memory, the error names the flags in order of what
+they cost the result — batch size first, architecture last — rather than
+reporting only the allocation that failed.
 
 Both families are kept. `surrogate` runs anywhere and is useful for fast
 iteration on the routing/calibration/gate logic; `torch` is the one that
@@ -239,12 +271,74 @@ expected direction. They are **not** evidence that quality-aware routing helps o
 real gliomas. That requires:
 
 ```bash
-cgate --data brats --root /path/to/datasets   # BraTS2021/ alongside BraTS-Africa/
+cgate --data brats --root /path/to/BraTS2021 /path/to/BraTS-Africa
 ```
 
 Train on BraTS 2021 (predominantly 3 T), evaluate the low-quality stratum on
-**BraTS-Africa** (1.5 T, resource-constrained settings). The cohort is inferred
-from the directory name.
+**BraTS-Africa** (1.5 T, resource-constrained settings).
+
+`--root` takes several paths because the two are separate downloads and often
+sit on different drives. Case directories are found at any depth, so the
+tumour-type level in the distributed Africa package
+(`BraTS-Africa/95_Glioma/BraTS-SSA-00002-000/`) needs no rearranging.
+
+The cohort is read from the case directory's own name and its ancestors up to
+the root you passed — `BraTS-SSA-*` identifies itself. Every run prints the
+counts before fitting anything:
+
+```
+Cohorts: {'high': 1251, 'low': 146}
+```
+
+**Check that line.** A mislabelled cohort does not raise; it merges the target
+into the source and the headline comparison silently measures nothing. This
+happened — see F5 in `docs/findings.md`. Override with one label per root when
+the layout does not carry it:
+
+```bash
+cgate --data brats --root /data/BraTS2021 /data/africa --cohort high low
+```
+
+### Ingest once, train many times
+
+Ingest reads every volume in the study and costs far more than fitting the grid,
+yet it is repeated identically for every seed and every router setting:
+
+```bash
+cgate --data brats --root ... --table-cache runs/table --experts torch   # builds it
+cgate --table-cache runs/table --experts torch --seed 1                  # reuses it
+```
+
+This is also how the study moves between machines. The raw archive is ~15 GB;
+the table and its slice cache are a couple of GB, so ingest where the download
+is and train where the GPU is:
+
+```bash
+cgate --table-cache runs/table --slice-cache /content/cache --experts torch
+```
+
+`--slice-cache` overrides the path recorded at ingest, since the location that
+was right on one machine rarely exists on the other. Each cache is stamped with
+a build id that the table pins, and row indices are re-derived on load, so a
+table and cache that disagree raise instead of training the network on one
+patient's images with another's labels — which no downstream metric can reveal.
+Matching patient ids are not enough to establish a match: a second ingest into
+the same directory keeps every id and replaces every pixel.
+
+Surrogate runs need no pixels, so the few-MB table travels on its own:
+
+```bash
+cgate --table-cache runs/table --experts surrogate      # slice cache not required
+```
+
+Two things the reuse path will refuse rather than guess. `--n-slices` must agree
+with the cache, which is what actually decides the slice count — otherwise a
+sweep produces identical runs filed under different labels. And
+`--rebuild-table` will not overwrite a table ingested from BraTS unless
+`--data brats` is given, since `--data` defaults to `synthetic` and a reuse
+command line carries neither it nor `--root`. Flags that ingest consumed
+(`--n-cases`, `--seed`, `--root`) cannot be honoured on reuse and are listed as
+ignored when they disagree with what the table was built with.
 
 ---
 
