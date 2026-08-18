@@ -8,10 +8,18 @@ venv/
 .pytest_cache/
 .ipynb_checkpoints/
 
-# data + experiment outputs
-data/
-runs/
-outputs/
+# data + experiment outputs.
+# Anchored with a leading slash: an unanchored `data/` also matched
+# src/cgate/data/, so the entire loader package -- synthetic, brats, slices,
+# splits, features -- was silently never committed. A fresh clone could not
+# import cgate at all.
+/data/
+/runs/
+/outputs/
+# A slice cache lands wherever --slice-cache or --out points, which is not
+# always under runs/. 69 MB of phantom .npy nearly got committed this way.
+/cache/
+*.npy
 *.nii
 *.nii.gz
 *.npz
