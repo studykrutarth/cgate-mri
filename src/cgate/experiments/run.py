@@ -219,6 +219,21 @@ def build_parser() -> argparse.ArgumentParser:
         "from scratch.",
     )
     p.add_argument(
+        "--max-cases",
+        type=int,
+        default=None,
+        help="ingest at most this many cases per --root (default: all). A "
+        "seeded random subset, not the first N -- BraTS ids are grouped by "
+        "contributing institution. Use it to validate the pipeline on a few "
+        "hundred cases before committing to the full multi-hour ingest.",
+    )
+    p.add_argument(
+        "--sample-seed",
+        type=int,
+        default=0,
+        help="seed for --max-cases, so a subset is reproducible from the config",
+    )
+    p.add_argument(
         "--batch-size",
         type=int,
         default=32,
@@ -393,7 +408,12 @@ def load_table(args, verbose: bool = True) -> CaseTable:
         from ..data.brats import load_brats_roots
 
         table = ingest_cases(
-            load_brats_roots(args.root, cohorts=args.cohort),
+            load_brats_roots(
+                args.root,
+                cohorts=args.cohort,
+                max_cases=args.max_cases,
+                sample_seed=args.sample_seed,
+            ),
             slice_cache_root=cache_root,
             slice_config=slice_config,
         )
@@ -401,6 +421,9 @@ def load_table(args, verbose: bool = True) -> CaseTable:
             "data": "brats",
             "roots": [str(r) for r in args.root],
             "cohort": list(args.cohort) if args.cohort else None,
+            # Recorded so a reused table cannot be mistaken for a full ingest.
+            "max_cases": args.max_cases,
+            "sample_seed": args.sample_seed,
         }
         table.source = source
 

@@ -327,7 +327,30 @@ def find_case_dirs(root: Path, max_depth: int = MAX_SEARCH_DEPTH) -> list[Path]:
     return found
 
 
-def load_brats_cases(root: Path, cohort: str | None = None, max_depth: int = MAX_SEARCH_DEPTH):
+def subsample(case_dirs: list[Path], max_cases: int | None, seed: int = 0) -> list[Path]:
+    """A reproducible random subset of the discovered cases.
+
+    Random rather than the first N: BraTS ids are grouped by contributing
+    institution, so a prefix is a subset of sites rather than a subset of the
+    study -- and site is exactly what the quality cohorts are meant to vary.
+    Seeded and re-sorted, so the same --max-cases always picks the same cases.
+    """
+    if max_cases is None or max_cases >= len(case_dirs):
+        return case_dirs
+    if max_cases < 1:
+        raise ValueError(f"max_cases must be >= 1, got {max_cases}")
+    rng = np.random.default_rng(seed)
+    picked = rng.choice(len(case_dirs), size=max_cases, replace=False)
+    return [case_dirs[i] for i in sorted(picked)]
+
+
+def load_brats_cases(
+    root: Path,
+    cohort: str | None = None,
+    max_depth: int = MAX_SEARCH_DEPTH,
+    max_cases: int | None = None,
+    sample_seed: int = 0,
+):
     """Yield every case found under `root`, at any nesting depth.
 
     `cohort` forces every case to that cohort. Left as None, each case is
@@ -341,11 +364,17 @@ def load_brats_cases(root: Path, cohort: str | None = None, max_depth: int = MAX
             f"no case directories under {root} (searched {max_depth} levels for a "
             f"file matching {SEG_PATTERNS}). Is the archive still packed?"
         )
-    for case_dir in case_dirs:
+    for case_dir in subsample(case_dirs, max_cases, sample_seed):
         yield load_case(case_dir, cohort=cohort or cohort_for_case(case_dir, root))
 
 
-def load_brats_roots(roots, cohorts=None, max_depth: int = MAX_SEARCH_DEPTH):
+def load_brats_roots(
+    roots,
+    cohorts=None,
+    max_depth: int = MAX_SEARCH_DEPTH,
+    max_cases: int | None = None,
+    sample_seed: int = 0,
+):
     """Yield cases from several dataset roots in turn.
 
     The real experiment needs this: BraTS 2021 and BraTS-Africa are separate
@@ -371,7 +400,13 @@ def load_brats_roots(roots, cohorts=None, max_depth: int = MAX_SEARCH_DEPTH):
 
     seen: dict[str, Path] = {}
     for root, cohort in zip(roots, per_root):
-        for case in load_brats_cases(root, cohort=cohort, max_depth=max_depth):
+        for case in load_brats_cases(
+            root,
+            cohort=cohort,
+            max_depth=max_depth,
+            max_cases=max_cases,
+            sample_seed=sample_seed,
+        ):
             # Two roots that overlap would duplicate patients across splits,
             # which assert_no_leakage cannot detect because both copies carry
             # the same id and would land in the same split.

@@ -219,6 +219,53 @@ def test_empty_root_says_so(tmp_path):
         list(load_brats_roots([tmp_path / "nothing"]))
 
 
+# -- subsampling a large cohort ---------------------------------------------
+
+
+def test_subsample_is_reproducible_and_sorted():
+    from cgate.data.brats import subsample
+
+    dirs = [Path(f"case-{i:03d}") for i in range(50)]
+    a = subsample(dirs, 10, seed=0)
+    assert len(a) == 10
+    assert a == subsample(dirs, 10, seed=0), "not reproducible"
+    assert a == sorted(a), "order depends on the draw"
+    assert len(set(a)) == 10, "sampled with replacement"
+
+
+def test_subsample_is_not_a_prefix():
+    """BraTS ids are grouped by contributing institution.
+
+    Taking the first N would select a subset of sites, and site is exactly what
+    the quality cohorts are meant to vary.
+    """
+    from cgate.data.brats import subsample
+
+    dirs = [Path(f"case-{i:03d}") for i in range(200)]
+    assert subsample(dirs, 20, seed=0) != dirs[:20]
+
+
+def test_subsample_passes_through_when_not_limiting():
+    from cgate.data.brats import subsample
+
+    dirs = [Path(f"case-{i:03d}") for i in range(5)]
+    assert subsample(dirs, None) is dirs
+    assert subsample(dirs, 99) is dirs
+
+
+def test_subsample_rejects_a_nonsense_limit():
+    from cgate.data.brats import subsample
+
+    with pytest.raises(ValueError, match="max_cases must be >= 1"):
+        subsample([Path("a"), Path("b")], 0)
+
+
+def test_max_cases_limits_what_is_loaded(tmp_path):
+    base = _real_brats2021_tree(tmp_path)
+    assert len(list(load_brats_roots([base], max_cases=2))) == 2
+    assert len(list(load_brats_roots([base]))) == 3
+
+
 # -- the 2021 / 2023 label renumbering --------------------------------------
 
 
