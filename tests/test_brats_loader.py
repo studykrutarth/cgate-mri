@@ -219,6 +219,26 @@ def test_empty_root_says_so(tmp_path):
         list(load_brats_roots([tmp_path / "nothing"]))
 
 
+def test_left_is_low_index_matches_the_affine_arithmetic():
+    """Derived from the affine rather than asserted, because a mirrored label
+    keeps the classes balanced and moves no metric.
+
+    An axcode names the direction an axis increases *toward*. World space is
+    RAS+, so +x is anatomical right: code "R" puts the left hemisphere at the
+    low indices. Reading it as "L" mirrors every laterality label, which is
+    what the code did from the start -- and what this test now prevents by
+    computing the answer instead of restating the convention.
+    """
+    from cgate.data.brats import left_is_low_index
+
+    for affine in (np.eye(4), np.diag([-1.0, 1.0, 1.0, 1.0])):
+        low = (affine @ np.array([0.0, 0, 0, 1]))[0]
+        high = (affine @ np.array([10.0, 0, 0, 1]))[0]
+        # Smaller world x is further left, so left is the low index when world
+        # x increases with the index.
+        assert left_is_low_index(affine) is bool(low < high)
+
+
 # -- orientation: the cohorts ship in opposite storage orders ----------------
 
 
@@ -513,8 +533,9 @@ def test_storage_order_does_not_survive_loading(tmp_path, x_scale):
 
     (case,) = list(load_brats_roots([base]))
     assert case.truth["lr_axis"] == 0
-    # RAS+: +x is anatomical right, so left is never the low index.
-    assert case.truth["left_is_low_index"] is False
+    # Canonical RAS+: axis 0 runs toward anatomical right, so the left
+    # hemisphere sits at the low indices.
+    assert case.truth["left_is_low_index"] is True
 
 
 def test_a_missing_modality_fails_loudly(tmp_path):

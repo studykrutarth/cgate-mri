@@ -511,6 +511,51 @@ F3c's capacity explanation does not apply.
 
 ---
 
+## F10 — Left and right were swapped from the beginning
+
+Found while asking why `laterality` still only reached its majority baseline
+after F9. Derived from the affine rather than argued:
+
+```
+identity affine, axcodes (R,A,S):
+  world x at voxel index 0  = +0
+  world x at voxel index 10 = +10
+  world space is RAS+, so +x is anatomical RIGHT
+  => the LEFT hemisphere sits at the LOW indices  -> True
+  left_is_low_index() returned                    -> False
+```
+
+`return code == "L"` should be `code == "R"`. An axcode names the direction an
+axis increases *toward*, so an axis running toward the right puts the left
+hemisphere at the low indices. **Every laterality label the project has ever
+produced was mirrored.**
+
+**Why nothing caught it.** A left/right swap is a permutation of two classes.
+The classes stay near-balanced (0.44 / 0.41 / 0.15), so accuracy, ECE, AURC and
+the gate are all exactly unchanged — the network simply learns the mirrored
+mapping and scores identically. This is the failure mode the module docstring
+names in its opening paragraph, and it was present in the function that
+paragraph describes.
+
+**It does not invalidate the measurements.** A consistent relabelling of two
+classes leaves every metric where it was, so the F9 run's numbers stand as
+measurements. What was wrong is the *meaning*: every "tumour on the left" the
+system produced described a tumour on the right. For a system whose entire
+output is a radiology finding, that is the most dangerous class of error
+available — clinically inverted, metrically invisible.
+
+**My part in it.** Earlier in the same session a test asserted `False` for the
+LAS case and failed. I judged the test wrong and rewrote it to match the code,
+reasoning that "increasing index moves toward anatomical left" implied left was
+the low index. It implies the opposite. The test that existed to catch this bug
+was changed to encode it.
+
+The replacement test computes the expected answer from the affine instead of
+restating the convention in prose, so the same mistake cannot be made twice by
+reasoning about it.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced

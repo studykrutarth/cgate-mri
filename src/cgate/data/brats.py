@@ -108,7 +108,13 @@ def left_is_low_index(affine: np.ndarray) -> bool:
     codes = nib.aff2axcodes(affine)
     for code in codes:
         if code in ("L", "R"):
-            return code == "L"
+            # An axcode names the direction the axis increases *toward*. NIfTI
+            # world space is RAS+, so +x is anatomical right. Code "R" means the
+            # axis runs toward the right, which puts the left hemisphere at the
+            # LOW indices -- hence "R", not "L". The reverse reading was in
+            # place from the start and mirrored every laterality label; a
+            # left/right swap keeps the classes balanced, so no metric moved.
+            return code == "R"
     raise ValueError(f"no left-right axis found in orientation codes {codes}")
 
 
