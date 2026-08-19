@@ -667,6 +667,76 @@ That decision should be made explicitly and recorded, not inherited.
 
 ---
 
+## F12 — The first result the system is entitled to produce
+
+Re-trained on the same table after the F11 augmentation fix. Nothing else
+changed: same cases, same splits, same slice cache, training only.
+
+| | before F11 | after F11 |
+|---|---|---|
+| `laterality` (B0) | 0.321 | **0.642** |
+| case accuracy (B0) | 0.247 | **0.506** |
+| AURC (B6) | 0.773 | **0.224** |
+| E-AURC (B4) | 0.343 | **0.085** |
+| B4 gate | 72.8% -> 69.7% (+4.3%) | 50.6% -> **21.4%** (+57.7%) |
+
+`laterality` went from below its constant predictor (0.44) to 0.64, confirming
+F11's diagnosis: it was never hard, it was supervised with coin flips.
+
+**The gate now does what it exists to do.** At ~52% coverage every row roughly
+halves the error, B4 from 50.6% to 21.4% and B6 from 45.7% to 20.9%. Before the
+fix the best row moved error by 4%.
+
+### The headline
+
+```
+B6 (quality-routed) vs B4 (uniform fusion), paired bootstrap n=2000
+dAURC = -0.0214   95% CI [-0.0635, +0.0087]   p = 0.185
+```
+
+Negative favours B6, so **for the first time in this project routing is
+directionally better than uniform fusion.** Every previous measurement — F3
+(+0.062), F3b (+0.052), F3d (+0.053) on phantoms, and both pre-F11 real runs —
+put it the wrong way. The CI has also tightened to about half its previous
+width.
+
+**It is still not significant.** The interval crosses zero and p = 0.185, so the
+honest statement remains "routing did not measurably beat uniform fusion". What
+changed is that the prior negative results are now known to have been measured
+through a broken laterality channel, so they should not be cited as evidence
+against the hypothesis either.
+
+### What the rows say
+
+| | acc | AURC | E-AURC | gate |
+|---|---|---|---|---|
+| B0 single CNN | 0.506 | 0.290 | 0.138 | 49.4 -> 31.7 |
+| B4 uniform fusion | 0.494 | 0.246 | **0.085** | 50.6 -> 21.4 |
+| B6 quality-routed | **0.543** | **0.224** | 0.096 | 45.7 -> 20.9 |
+
+**Heterogeneity is doing the heavy lifting**, as F1 predicted on phantoms:
+B4 cuts E-AURC from B0's 0.138 to 0.085 with no accuracy gain, i.e. the
+improvement is entirely in confidence *ranking*. Routing then adds accuracy
+(0.494 -> 0.543) and total AURC (0.246 -> 0.224) while giving back a little
+ranking (E-AURC 0.085 -> 0.096) — the same accuracy/ranking trade F3b found,
+now with routing on the winning side of the total.
+
+### What still blocks a claim
+
+1. `et_present` (0.975) and `ncr_present` (0.840) are **unchanged and still
+   exactly their constant baselines**. Two of the three critical findings
+   carry no signal; only `laterality` now does. The gate works despite them,
+   not because of them, and the design question from F11 stands.
+2. F8's confound is untouched: the low cohort also has twice the tumour volume,
+   so "helps under degraded quality" is not separable from "helps on larger
+   tumours" on this data.
+3. 81 test cases and 400 of 1251 available training cases. p = 0.185 with a CI
+   this wide is an underpowered study, not a null one — the full ingest is the
+   obvious next lever, and F2 already established that test-set size is what
+   binds.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced
