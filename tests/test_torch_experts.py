@@ -143,6 +143,35 @@ def test_mc_dropout_keeps_its_own_rate_when_a_shared_config_is_passed(cache):
     assert shared.dropout == 0.3, "the shared config was mutated"
 
 
+def test_augmentation_never_mirrors_the_hemispheres(cache, labels):
+    """The augmentation must not touch the axis `laterality` is read from.
+
+    A cached slice is (C, H, W) = (C, X, Y) and canonical RAS makes X
+    left-right, so flipping H swaps the hemispheres while the label stays put.
+    That trains laterality on coin flips, and nothing reports it: the classes
+    stay balanced, so every aggregate metric holds still.
+    """
+    import numpy as np
+
+    slice_ = cache.get_slice(0, 0)                     # (C, H, W)
+    h = slice_.shape[-2]
+    marker = slice_.copy()
+    marker[:, : h // 2, :] += 100.0                    # mass on one hemisphere
+
+    ap_flipped = marker[..., ::-1]                     # what the code must do
+    lr_flipped = marker[..., ::-1, :]                  # what it must not
+
+    def low_half_mass(a):
+        return float(a[:, : a.shape[-2] // 2, :].sum())
+
+    assert low_half_mass(ap_flipped) == pytest.approx(low_half_mass(marker)), (
+        "the A-P flip moved mass across the left-right axis"
+    )
+    assert low_half_mass(lr_flipped) != pytest.approx(low_half_mass(marker)), (
+        "test is not distinguishing the two axes"
+    )
+
+
 def test_amp_defaults_follow_the_device(cache):
     """On for CUDA, off for CPU, and overridable either way.
 

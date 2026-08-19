@@ -594,6 +594,79 @@ which is what now exists.
 
 ---
 
+## F11 — Why the gate cannot work: the critical findings are the useless ones
+
+Each finding against the best **constant** predictor (its class marginal in the
+test cohort), which is the honest baseline — not uniform:
+
+| finding | critical | acc | const acc | Brier | const Brier | signal |
+|---|---|---|---|---|---|---|
+| `et_present` | yes | 0.975 | **0.975** | 0.043 | 0.048 | +0.005 |
+| `ncr_present` | yes | 0.840 | **0.840** | 0.252 | 0.269 | +0.017 |
+| `laterality` | yes | 0.432 | 0.440 | 0.679 | 0.616 | **-0.063** |
+| `burden` | no | 0.765 | 0.670 | 0.345 | 0.497 | **+0.151** |
+| `et_fraction` | no | 0.556 | 0.420 | 0.551 | 0.655 | **+0.104** |
+
+The two binary criticals match their constant baseline to three decimals.
+`laterality` is *worse* than one. The two findings carrying real signal are both
+marked non-critical.
+
+Case confidence is the **minimum over the critical findings**, so it is computed
+from two constants and one noise source — and the minimum is almost always the
+noise. That is the mechanism behind the gate: B0 defers 38 of 81 cases to move
+error 75.3% -> 65.1%, and B6 makes it *worse*. No amount of routing can fix a
+confidence signal assembled from findings that carry none.
+
+### The laterality cause: the augmentation was mirroring the hemispheres
+
+A hypothesis worth recording as refuted first: that global pooling in the
+backbone discards absolute position, making laterality unlearnable. Tested
+directly — feeding an image and its mirror through both encoders gives
+max|diff| 0.41 (resnet18) and 2.09 (vit_tiny). Learned kernels are not
+reflection-equivariant, so the features distinguish the two fine. Not the cause.
+
+The actual cause:
+
+```python
+# Anterior-posterior flips only -- see TorchExpertConfig.
+imgs[flip] = imgs[flip][..., ::-1, :]     # flips axis -2 = H
+```
+
+A cached slice is `(C, H, W) = (C, X, Y)` because `_extract` takes along
+`slice_axis=2` (z), and canonical RAS makes **X the left-right axis**. So the
+anterior-posterior axis is the last one, and `[..., ::-1, :]` was a *left-right*
+flip — exactly what `TorchExpertConfig.augment` documents as forbidden:
+
+> A left-right flip would mirror the hemisphere and silently invert the
+> `laterality` label while the target stayed unchanged -- corrupting the one
+> finding that depends on spatial orientation, invisibly.
+
+Half of every training batch had its hemispheres swapped with the label left
+alone, so laterality was trained on coin flips. It was never hard; it was
+supervised with noise, which is why it lands below its own constant predictor
+while every other finding looks plausible.
+
+**This is the fourth bug in a row whose signature is "correct labels, wrong
+pixels, no metric moves"** — F9 (cohorts mirrored against each other), F10 (the
+convention inverted), F10b (the value never plumbed through), and now the
+augmentation undoing all of it. The common thread is that laterality is the only
+finding with a spatial precondition, and the class balance hides every violation
+of it. The tests that now exist assert the *property* — same anatomy, same
+label; augmentation preserves hemispheric mass — rather than restating the
+convention.
+
+**Fixed**: the flip now targets the last axis. Needs re-training only; the slice
+cache is unaffected because augmentation happens after the cache is read.
+
+**Still open, and a design question rather than a bug:** `et_present` at 0.95
+prevalence and `ncr_present` at 0.86 cannot carry much signal on 81 test cases
+whatever the model does, yet they gate every case. Either the critical set
+should follow the evidence (`burden` and `et_fraction` carry it), or the gate
+should not be a hard minimum over findings that are near-constant by nature.
+That decision should be made explicitly and recorded, not inherited.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced

@@ -314,9 +314,15 @@ class TorchSliceExpert:
                     [self.cache.get_slice(rows[c], s) for c, s in chunk], axis=0
                 )
                 if cfg.augment:
-                    # Anterior-posterior flips only -- see TorchExpertConfig.
+                    # A cached slice is (C, H, W) = (C, X, Y), and canonical RAS
+                    # makes X left-right. So the anterior-posterior axis is the
+                    # LAST one; `[..., ::-1, :]` flipped H and was therefore the
+                    # left-right flip this is written to avoid -- half of every
+                    # batch had its hemispheres swapped with the label left
+                    # alone, which is why laterality scored below a constant
+                    # predictor while every other finding looked plausible.
                     flip = rng.random(len(chunk)) < 0.5
-                    imgs[flip] = imgs[flip][..., ::-1, :]
+                    imgs[flip] = imgs[flip][..., ::-1]
                 batch = self._batch_tensor(imgs)
                 y = torch.from_numpy(labels[chunk[:, 0]]).to(self.device)
 
