@@ -284,8 +284,8 @@ class SliceCache:
             rows.append(self._row_of[key])
         return np.asarray(rows, dtype=np.int64)
 
-    def get(self, row: int) -> np.ndarray:
-        """(n_slices, n_modalities, H, W) float32 for one case."""
+    def _memmap(self, row: int):
+        """The open memmap for one case, without materialising it."""
         row = int(row)
         mm = self._maps.get(row)
         if mm is None:
@@ -294,4 +294,20 @@ class SliceCache:
                 raise FileNotFoundError(f"missing cached slices for row {row}: {path}")
             mm = np.load(path, mmap_mode="r")
             self._maps[row] = mm
-        return np.asarray(mm, dtype=np.float32)
+        return mm
+
+    def get(self, row: int) -> np.ndarray:
+        """(n_slices, n_modalities, H, W) float32 for one case."""
+        return np.asarray(self._memmap(row), dtype=np.float32)
+
+    def get_slice(self, row: int, index: int) -> np.ndarray:
+        """(n_modalities, H, W) float32 for one slice of one case.
+
+        Indexes the memmap before converting, which is the whole point: `get`
+        materialises every slice of the case as float32 and callers that wanted
+        one slice threw away the rest. Training does that once per sample and
+        inference once per (case, slice) pair, so each case was being converted
+        n_slices times over -- roughly a 16x amplification at the default, and
+        it left the GPU idle about 95% of the time waiting for it.
+        """
+        return np.asarray(self._memmap(row)[int(index)], dtype=np.float32)

@@ -311,7 +311,7 @@ class TorchSliceExpert:
             for start in range(0, len(train_pairs), cfg.batch_size):
                 chunk = train_pairs[start : start + cfg.batch_size]
                 imgs = np.stack(
-                    [self.cache.get(rows[c])[s] for c, s in chunk], axis=0
+                    [self.cache.get_slice(rows[c], s) for c, s in chunk], axis=0
                 )
                 if cfg.augment:
                     # Anterior-posterior flips only -- see TorchExpertConfig.
@@ -374,7 +374,9 @@ class TorchSliceExpert:
         with torch.no_grad():
             for start in range(0, len(pairs), self.config.batch_size):
                 chunk = pairs[start : start + self.config.batch_size]
-                imgs = np.stack([self.cache.get(rows[c])[s] for c, s in chunk], axis=0)
+                imgs = np.stack(
+                    [self.cache.get_slice(rows[c], s) for c, s in chunk], axis=0
+                )
                 batch = self._batch_tensor(imgs)
                 y = torch.from_numpy(labels[chunk[:, 0]]).to(self.device)
                 with self._autocast():
@@ -408,7 +410,9 @@ class TorchSliceExpert:
                 for start in range(0, n, self.config.batch_size):
                     case_idx = np.arange(start, min(start + self.config.batch_size, n))
                     for s in range(n_slices):
-                        imgs = np.stack([self.cache.get(rows[c])[s] for c in case_idx], axis=0)
+                        imgs = np.stack(
+                            [self.cache.get_slice(rows[c], s) for c in case_idx], axis=0
+                        )
                         batch = self._batch_tensor(imgs)
                         with self._autocast():
                             logits = self.model(batch)
