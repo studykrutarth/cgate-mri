@@ -440,7 +440,11 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.time()
 
     if verbose:
-        print(f"Ingesting cases ({args.data}) ...")
+        # Not args.data: a reused table needs no --data, so the flag sits at its
+        # synthetic default while real BraTS is being loaded. F6 keyed the
+        # banner, min_voxels and the payload off the table's provenance and
+        # missed this line, which then announced a real run as synthetic.
+        print("Loading cases ...")
     table = load_table(args, verbose=verbose)
 
     # Read from the table, not from --data: a reused BraTS table would otherwise

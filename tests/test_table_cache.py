@@ -295,6 +295,19 @@ def test_reusing_a_table_rejects_a_mismatched_n_slices(tmp_path):
     assert load_table(agreed, verbose=False).n_cases == N_CASES
 
 
+def test_a_reused_brats_table_is_never_announced_as_synthetic(tmp_path, capsys):
+    """--data sits at its synthetic default on every reuse command line."""
+    from cgate.experiments.run import main
+
+    table = _ingest(tmp_path, with_slices=False)
+    table.save(tmp_path / "table", source={"data": "brats", "roots": ["G:/data"]})
+
+    main(["--table-cache", str(tmp_path / "table"), "--bootstrap", "0",
+          "--out", str(tmp_path / "r.json")])
+    out = capsys.readouterr().out
+    assert "synthetic" not in out.lower(), "a real run was announced as synthetic"
+
+
 def test_reuse_names_the_flags_it_is_ignoring(tmp_path, capsys):
     """--n-cases 500 on a cached 40-case table looks like a 500-case run."""
     from cgate.experiments.run import load_table
