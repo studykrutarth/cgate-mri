@@ -432,6 +432,85 @@ whether it earns critical status should be revisited.
 
 ---
 
+## F9 — The two cohorts store their voxels in opposite order
+
+First real external-protocol run: train on 300 BraTS 2021, test on 81
+BraTS-Africa. Per-finding accuracy on the test cohort:
+
+| row | et_present | ncr_present | laterality | burden | et_fraction |
+|---|---|---|---|---|---|
+| B0 | 0.975 | 0.840 | 0.333 | 0.728 | 0.346 |
+| B3 | 0.975 | 0.840 | 0.333 | 0.753 | 0.420 |
+| B4 | 0.975 | 0.840 | 0.309 | 0.765 | 0.469 |
+| B5 | 0.975 | 0.840 | 0.346 | 0.778 | 0.543 |
+| B6 | 0.975 | 0.840 | 0.284 | 0.728 | 0.506 |
+
+`laterality` sits at 0.28-0.36 against a **0.45 majority-class baseline**. Below
+the constant predictor is not "hard" — it is anti-correlated, which means a sign
+error somewhere.
+
+**Cause.** Orientation codes, sampled 40 cases per cohort:
+
+```
+BraTS 2021    (L,P,S) x40          left_is_low_index = True
+BraTS-Africa  (R,A,S) x38          left_is_low_index = False
+              (L,P,S) x2
+```
+
+The cohorts run in opposite left-right *and* anterior-posterior order, so their
+axial slices are 180 degrees apart — and BraTS-Africa is not even internally
+consistent. The loader reads laterality from each affine, so **both cohorts'
+labels are correct**. Nothing canonicalises the pixels, and the slice cache
+stores them as they come.
+
+**Why the correct labels are what make it dangerous.** A label bug would show up
+as disagreement somewhere. Here every label matches its own image, every
+consistency check passes, and the damage is entirely in the train/test relation:
+the network learns "tumour at low index means left" from BraTS 2021 and is
+tested on a cohort where that position is the other side. Under the external
+protocol that inverts laterality on 95% of the test set — and mirrors every
+other spatial feature the CNN learned along with it, which is why `burden` and
+`et_fraction` are also weak.
+
+This is the failure the module docstring already warned about, applied to the
+wrong half of the problem: orientation was read for the *labels* and never
+applied to the *images*.
+
+**Fix.** Every volume and mask is reoriented with `nib.as_closest_canonical` on
+load, so the cache holds one frame. Confirmed: both cohorts now report
+`left_is_low_index = False`. The old test pinning the flag to the affine's sign
+encoded the pre-fix contract and was replaced — what must still follow the file
+is the anatomical label, which is now pinned separately.
+
+**Consequence for the record:** the study400 run is void. Its slice cache holds
+mirrored pixels, so this needs a re-ingest, not just re-training.
+
+**Two other things this run established, which the re-run should confirm:**
+
+1. `et_present` (0.975) and `ncr_present` (0.840) are **constant predictions** —
+   identical across all seven systems, matching the class priors exactly. Both
+   are *critical* findings, and case confidence is the minimum over the critical
+   set. With the third critical finding (`laterality`) broken by the above, the
+   gated quantity was built from three uninformative findings. That is why the
+   gate does nothing: B0 defers 51 of 81 cases to move error 74.1% -> 73.3%.
+   The two findings that *do* carry signal, `burden` and `et_fraction`, are
+   marked non-critical and excluded from confidence. Whether that assignment is
+   right is now an open design question, not a bug.
+
+2. Heterogeneity shows up on real data anyway. On `et_fraction`, the rows with
+   radiomics + CNN + ViT (B4 0.469, B5 0.543, B6 0.506) clearly beat the
+   CNN-only rows (B0-B2 0.346). That is F1 reproducing outside the phantoms,
+   with the mirroring still in place.
+
+**The headline from this run is not reportable**, but for the record it was
+dAURC = +0.0144, 95% CI [-0.0581, +0.0733], p = 0.770 — no significant
+difference, with B6 holding the best E-AURC of any row (0.2992 vs B4's 0.3195).
+That is the F3b split again — routing ranks better, predicts worse — this time
+with a correctly sized router (24 parameters on 57 cases, 0.42 per case), so
+F3c's capacity explanation does not apply.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced

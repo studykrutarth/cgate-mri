@@ -12,6 +12,16 @@ from each volume's affine rather than assumed. Getting this wrong silently
 mirrors every laterality label, which would be invisible in aggregate accuracy
 because the classes stay balanced.
 
+Every volume is also reoriented to canonical RAS+ on load, which is a separate
+problem from reading the affine and was missed at first. BraTS 2021 ships LPS
+and BraTS-Africa ships mostly RAS, so their voxel arrays run in opposite
+left-right *and* anterior-posterior order -- axial slices 180 degrees apart.
+Reading the affine keeps the *labels* right for both, which is precisely what
+makes it dangerous: nothing downstream disagrees, while the slice cache feeds
+the network images from one cohort mirrored against the other. A model trained
+on BraTS 2021 then has its learned left-right mapping inverted on 95% of
+BraTS-Africa, and laterality lands below its own majority-class baseline.
+
 Finding the cases, and labelling their cohort
 ---------------------------------------------
 Both are done defensively, because both failed silently on a real download.
@@ -246,7 +256,7 @@ def load_case(case_dir: Path, cohort: str | None = None) -> BratsCase:
                 f"{case_dir.name}: no file matching modality {modality!r} "
                 f"(tried suffixes {MODALITY_PATTERNS[modality]})"
             )
-        img = nib.load(str(path))
+        img = nib.as_closest_canonical(nib.load(str(path)))
         volumes.append(np.asarray(img.dataobj, dtype=np.float32))
         if affine is None:
             affine = img.affine
@@ -254,7 +264,9 @@ def load_case(case_dir: Path, cohort: str | None = None) -> BratsCase:
     seg_path = _find_one(case_dir, SEG_PATTERNS)
     if seg_path is None:
         raise FileNotFoundError(f"{case_dir.name}: no segmentation file found")
-    mask = np.asarray(nib.load(str(seg_path)).dataobj).astype(np.int16)
+    mask = np.asarray(
+        nib.as_closest_canonical(nib.load(str(seg_path))).dataobj
+    ).astype(np.int16)
     mask = canonicalise_labels(mask, context=case_dir.name)
 
     vols = np.stack(volumes, axis=0)

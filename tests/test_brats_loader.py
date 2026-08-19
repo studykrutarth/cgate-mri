@@ -219,6 +219,85 @@ def test_empty_root_says_so(tmp_path):
         list(load_brats_roots([tmp_path / "nothing"]))
 
 
+# -- orientation: the cohorts ship in opposite storage orders ----------------
+
+
+RAS_AFFINE = np.diag([1.0, 1.0, 1.0, 1.0])
+
+
+def _case_with_affine(case_dir: Path, affine, tumour_side: str) -> Path:
+    """A case whose tumour sits on a given ANATOMICAL side.
+
+    The voxel index of that tumour depends on the storage order, which is the
+    whole point: the same anatomy lands at opposite indices under LPS and RAS.
+    """
+    nib = pytest.importorskip("nibabel")
+    case_dir.mkdir(parents=True, exist_ok=True)
+    # x increases toward L under an LPS affine and toward R under RAS.
+    x_is_left = affine[0, 0] < 0
+    high_index_is_left = x_is_left
+    put_high = (tumour_side == "left") == high_index_is_left
+
+    seg = np.zeros(SHAPE, dtype=np.int16)
+    lo, hi = 0, SHAPE[0] // 2
+    if put_high:
+        lo, hi = SHAPE[0] // 2, SHAPE[0]
+    seg[lo:hi, 2:5, 2:5] = 1
+
+    for suffix in BRATS2021_SUFFIXES:
+        data = seg if suffix == "seg" else seg.astype(np.float32) + 0.5
+        nib.save(
+            nib.Nifti1Image(data, affine),
+            case_dir / f"{case_dir.name}_{suffix}.nii.gz",
+        )
+    return case_dir
+
+
+def test_volumes_are_reoriented_to_a_common_frame(tmp_path):
+    """BraTS 2021 ships LPS, BraTS-Africa mostly RAS.
+
+    Reading the affine keeps both cohorts' *labels* right, which is what makes
+    this dangerous: nothing downstream disagrees while the cached slices from
+    one cohort are mirrored against the other. A network trained on one then has
+    its left-right mapping inverted on the other.
+    """
+    from cgate.data.brats import load_case
+
+    lps = _case_with_affine(tmp_path / "BraTS2021_00000", LAS_AFFINE, "left")
+    ras = _case_with_affine(tmp_path / "BraTS2021_00001", RAS_AFFINE, "left")
+
+    a, b = load_case(lps), load_case(ras)
+
+    # Same anatomy, so the tumour must occupy the same voxel half in both.
+    half = SHAPE[0] // 2
+    a_high = a.mask[half:].sum() > a.mask[:half].sum()
+    b_high = b.mask[half:].sum() > b.mask[:half].sum()
+    assert a_high == b_high, "cohorts still stored in opposite left-right order"
+
+    # And the images must be mirrored the same way as the masks, or the network
+    # sees one cohort flipped against its own labels.
+    a_img_high = a.volumes[0, half:].sum() > a.volumes[0, :half].sum()
+    assert a_img_high == a_high
+    assert a.truth["left_is_low_index"] == b.truth["left_is_low_index"]
+
+
+def test_laterality_label_survives_reorientation(tmp_path):
+    """The label must still describe anatomy, not storage order."""
+    from cgate.data.brats import load_case
+    from cgate.findings import measure
+
+    left_lps = load_case(_case_with_affine(tmp_path / "a_BraTS2021_00000", LAS_AFFINE, "left"))
+    left_ras = load_case(_case_with_affine(tmp_path / "b_BraTS2021_00001", RAS_AFFINE, "left"))
+    right_ras = load_case(_case_with_affine(tmp_path / "c_BraTS2021_00002", RAS_AFFINE, "right"))
+
+    m_ll = measure(left_lps.mask, left_is_low_index=left_lps.truth["left_is_low_index"])
+    m_lr = measure(left_ras.mask, left_is_low_index=left_ras.truth["left_is_low_index"])
+    m_rr = measure(right_ras.mask, left_is_low_index=right_ras.truth["left_is_low_index"])
+
+    assert m_ll["laterality"] == m_lr["laterality"], "same anatomy, different label"
+    assert m_rr["laterality"] != m_lr["laterality"], "opposite anatomy, same label"
+
+
 # -- subsampling a large cohort ---------------------------------------------
 
 
@@ -414,20 +493,19 @@ def test_loads_a_real_nifti_case_with_the_right_cohort(tmp_path):
     assert case.truth["lr_axis"] == 0
 
 
-@pytest.mark.parametrize(
-    "x_scale, left_is_low_index",
-    [
-        # NIfTI is RAS+, so +x is anatomical right. A negative x scale means
-        # increasing index moves toward the left, and vice versa.
-        (-1.0, True),
-        (+1.0, False),
-    ],
-)
-def test_laterality_direction_follows_the_affine(tmp_path, x_scale, left_is_low_index):
-    """Both signs are pinned because assuming one mirrors every laterality label.
+@pytest.mark.parametrize("x_scale", [-1.0, +1.0])
+def test_storage_order_does_not_survive_loading(tmp_path, x_scale):
+    """Either storage order must arrive in one canonical frame.
 
-    The classes stay balanced under a mirror, so aggregate accuracy would not
-    move and nothing downstream would report a problem.
+    This test used to pin the opposite contract -- that `left_is_low_index`
+    tracked the sign of the affine -- which was right while the loader only
+    read orientation. It now reorients to RAS+ as well, because reading the
+    affine fixes the *labels* while leaving the *pixels* of one cohort mirrored
+    against the other, and the network is trained on the pixels.
+
+    So the flag is now a property of the canonical frame, and is the same for
+    every case. What must still follow the file is the anatomical laterality
+    label -- pinned in test_laterality_label_survives_reorientation.
     """
     affine = np.diag([x_scale, 1.0, 1.0, 1.0])
     base = tmp_path / "BraTS2021_Training_Data"
@@ -435,7 +513,8 @@ def test_laterality_direction_follows_the_affine(tmp_path, x_scale, left_is_low_
 
     (case,) = list(load_brats_roots([base]))
     assert case.truth["lr_axis"] == 0
-    assert case.truth["left_is_low_index"] is left_is_low_index
+    # RAS+: +x is anatomical right, so left is never the low index.
+    assert case.truth["left_is_low_index"] is False
 
 
 def test_a_missing_modality_fails_loudly(tmp_path):
