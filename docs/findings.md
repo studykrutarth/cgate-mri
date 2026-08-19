@@ -377,6 +377,61 @@ real cohort touching the code; the honest expectation is that more will.
 
 ---
 
+## F8 — The cohorts differ in more than image quality
+
+Measured on the ingested 495-case study (400 BraTS 2021, 95 BraTS-Africa):
+
+| cohort | n | median WT | median ET | median ET/WT |
+|---|---|---|---|---|
+| high (BraTS 2021) | 400 | 87,008 | 16,672 | 0.215 |
+| low (BraTS-Africa) | 95 | **162,872** | 31,100 | 0.253 |
+
+**Africa gliomas present at roughly twice the whole-tumour volume.** The
+enhancing fraction is similar, so this is a difference in size at presentation,
+not in tumour composition — consistent with later presentation in
+resource-constrained settings.
+
+`burden` is the WT tercile, and its edges are fitted on `train` only, which
+under the external protocol is the source cohort alone. That is the correct
+split discipline, and it produces:
+
+| | small | mid | large |
+|---|---|---|---|
+| high (train) | 0.33 | 0.33 | 0.34 |
+| **low (test)** | 0.17 | 0.16 | **0.67** |
+
+Two thirds of the test cohort lands in one class. A model that always answers
+"large" scores 0.67 on that finding, and any accuracy difference between cohorts
+is then partly a class-prior shift that has nothing to do with acquisition
+quality. `et_fraction` shifts far less (0.31 / 0.27 / 0.42).
+
+**What is and is not affected.** Case confidence — the gated quantity, and what
+AURC ranks — is the **minimum over the critical findings**, which are
+`et_present`, `ncr_present` and `laterality`. `burden` and `et_fraction` are not
+critical, so the headline B6-vs-B4 comparison is insulated from this. Aggregate
+**accuracy** is not: it averages all five findings, so per-finding accuracy has
+to be reported for the low stratum or the burden prior will be read as a
+quality effect.
+
+**The wider point, which is not a bug and cannot be fixed in code.** The project
+states its cohorts differ in *quality*. They also differ in *presentation*, and
+the two are confounded by construction, because both follow from where the scans
+were acquired. "Routing helps in the low-quality stratum" is therefore not
+separable from "routing helps on larger tumours from Sub-Saharan sites" on this
+data alone. Whatever the headline comes out as, that limitation belongs in the
+report next to it. Distinguishing them would need either a size-matched
+subsample — which the case counts do not support — or a cohort that varies
+quality while holding presentation fixed, which is what a phantom or a
+degradation study provides and BraTS does not.
+
+Also worth noting: `et_present` is 0.95 present across the whole study, and
+0.98 in the Africa cohort. It is a **critical** finding, so it enters the
+confidence minimum, while carrying almost no discriminative signal. That is F4's
+`ncr_present` observation reappearing on real data on a different finding, and
+whether it earns critical status should be revisited.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced
