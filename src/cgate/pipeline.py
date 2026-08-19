@@ -261,7 +261,20 @@ def ingest_cases(
         if writer is not None:
             writer.add(case)
 
-        measurements.append(measure(case.mask))
+        # Orientation travels with the case. `measure` defaults to axis 0 with
+        # left at the low index, which is right for canonical RAS and for the
+        # phantoms -- but the loader goes to the trouble of reading each
+        # volume's affine and nothing was reading the answer, so a cohort
+        # stored the other way round had its laterality silently mirrored
+        # against the cohort it was compared with.
+        truth = getattr(case, "truth", None) or {}
+        measurements.append(
+            measure(
+                case.mask,
+                spatial_axis=int(truth.get("lr_axis", 0)),
+                left_is_low_index=bool(truth.get("left_is_low_index", True)),
+            )
+        )
         patient_ids.append(case.patient_id)
         cohorts.append(case.cohort)
         quality.append(float(case.quality_level))

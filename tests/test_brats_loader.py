@@ -318,6 +318,34 @@ def test_laterality_label_survives_reorientation(tmp_path):
     assert m_rr["laterality"] != m_lr["laterality"], "opposite anatomy, same label"
 
 
+def test_ingest_uses_each_case_orientation(tmp_path):
+    """The loader read the affine; nothing downstream consumed the answer.
+
+    `measure` defaults to left-at-low-index, which is correct for canonical RAS
+    -- so after reorientation the labels came out right by coincidence rather
+    than because the value was used. A case stored the other way round would be
+    mirrored against the cohort it is compared with, and a left/right swap moves
+    no metric.
+    """
+    from cgate.data.brats import load_case
+    from cgate.pipeline import ingest_cases
+
+    left = load_case(_case_with_affine(tmp_path / "BraTS2021_00000", RAS_AFFINE, "left"))
+    # Force the opposite storage order past canonicalisation, as a cohort
+    # shipped in a different convention would arrive before it.
+    flipped = load_case(_case_with_affine(tmp_path / "BraTS2021_00001", RAS_AFFINE, "left"))
+    flipped.mask = flipped.mask[::-1].copy()
+    flipped.volumes = flipped.volumes[:, ::-1].copy()
+    flipped.truth = dict(flipped.truth)
+    flipped.truth["left_is_low_index"] = not flipped.truth["left_is_low_index"]
+
+    table = ingest_cases([left, flipped])
+    a, b = table.measurements
+    assert a["laterality"] == b["laterality"], (
+        "same anatomy stored two ways produced two different laterality labels"
+    )
+
+
 # -- subsampling a large cohort ---------------------------------------------
 
 

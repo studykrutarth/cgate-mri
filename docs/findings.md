@@ -554,6 +554,44 @@ The replacement test computes the expected answer from the affine instead of
 restating the convention in prose, so the same mistake cannot be made twice by
 reasoning about it.
 
+### F10b — and the value was never plumbed through anyway
+
+Checking what a re-ingest would actually change, the fix altered nothing: 17
+real cases across both cohorts gave laterality 0 -> 0, 1 -> 1, 2 -> 2.
+
+`pipeline.py` called `measure(case.mask)` with no orientation argument, so it
+used the default (`spatial_axis=0`, `left_is_low_index=True`) for every case in
+the study. The loader computed `left_is_low_index(affine)` and stored it in
+`case.truth`; nothing read it. `laterality_split`'s own docstring asserts that
+"`cgate.data.brats` does that and passes the correct value through" — it
+computes it and does not pass it.
+
+So the real history is not the one F10 tells:
+
+| | orientation | flag used | correct? |
+|---|---|---|---|
+| pre-F9 BraTS 2021 | LPS | True (default) | **no** — mirrored |
+| pre-F9 BraTS-Africa | RAS | True (default) | yes |
+| post-F9 both | RAS | True (default) | yes |
+
+The two cohorts were labelled *against each other* before F9, on top of the
+pixel mirroring. After F9 everything is canonical RAS, where the default
+happens to be right — so the study400_ras labels are correct, but by
+coincidence rather than by construction.
+
+**Consequences.** No re-ingest is needed: the existing table's laterality is
+already correct, and the F9 run's numbers stand. The inverted
+`left_is_low_index` was still a real bug and is still fixed; it was simply dead
+code with respect to the pipeline. Ingest now passes each case's `lr_axis` and
+`left_is_low_index` through, so correctness no longer depends on every dataset
+arriving in one convention.
+
+The lesson is narrower than F10's and worth more: a value computed carefully,
+stored, documented as being used, and never read. The test that would have
+caught it is not a test of the convention but a test that two identical
+anatomies stored in opposite orders come out of *ingest* with the same label —
+which is what now exists.
+
 ---
 
 ## Standing caveats
