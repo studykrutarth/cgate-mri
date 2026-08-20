@@ -56,10 +56,19 @@ class FindingSpec:
 # The canonical target.
 #
 # Every finding below is derivable from the BraTS segmentation mask alone, with
-# no extra annotation and no ambiguity. Each was chosen to have non-degenerate
+# no extra annotation and no ambiguity. Each was *intended* to have non-degenerate
 # class prevalence -- e.g. "edema present" is deliberately excluded because it is
 # true in almost every BraTS case and would be trivially predictable, inflating
 # accuracy while telling us nothing about calibration.
+#
+# On real BraTS data that intention is not met, and this comment used to claim it
+# was. Measured over 146 BraTS-Africa masks (F13): `et_present` is true in 0.973
+# of cases at the current threshold and in 0.986 at a threshold of one voxel, so
+# it is precisely the "edema present" case the paragraph above says was excluded.
+# `ncr_present` is 0.781, degenerate for a different reason -- DEFAULT_MIN_VOXELS
+# is a phantom-era constant an order of magnitude below the real NCR
+# distribution. Neither is fixed here; both are load-bearing, since `critical`
+# below decides what gates a case.
 # ---------------------------------------------------------------------------
 FINDING_SCHEMA: tuple[FindingSpec, ...] = (
     FindingSpec(

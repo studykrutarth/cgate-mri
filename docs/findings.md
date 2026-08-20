@@ -737,6 +737,75 @@ now with routing on the winning side of the total.
 
 ---
 
+## F13 — `et_present` is exactly the finding the schema says it excluded
+
+F11 and F12 both ended on the same open question: `et_present` (0.975) and
+`ncr_present` (0.840) sit on their constant baselines, yet both are critical and
+therefore gate every case. This measures why, directly from the masks.
+
+Measured on all 146 BraTS-Africa segmentations, segmentation only — no
+modalities, no slice cache, no table. That cohort is the only real data still on
+disk (see *Standing caveats*), so these are SSA prevalences rather than the
+study's 400/95 mix; the study's recorded accuracies fall within a few points of
+them, which is what a prevalence-matching constant predictor does.
+
+```
+ET  voxels  min/5/25/50/75/95/max:   0  1,300  14,684  33,048  63,426  107,019  299,532
+NCR voxels  min/5/25/50/75/95/max:   0      0     774   5,408  20,703   85,670  121,932
+ET zero in 2/146 cases      NCR zero in 12/146 cases
+```
+
+Prevalence of `present` as a function of `FindingExtractor.min_voxels`:
+
+| min_voxels | `et_present` | `ncr_present` |
+|---:|---:|---:|
+| 1 | 0.986 | 0.918 |
+| 500 *(current)* | **0.973** | **0.781** |
+| 2,000 | 0.945 | 0.616 |
+| 4,000 | 0.904 | **0.527** |
+| 8,000 | 0.822 | 0.438 |
+| 16,000 | 0.733 | 0.295 |
+
+**These are two different faults, and only one is a threshold.**
+
+`ncr_present` is a mis-calibrated constant. `DEFAULT_MIN_VOXELS = 500` was set
+against the phantoms, where it is reasonable; on real gliomas the NCR
+distribution runs an order of magnitude higher (median 5,408). The finding
+responds to the knob — at 4,000 voxels prevalence is 0.527, near-balanced and
+genuinely informative. This is fixable, and the fix must be fitted on the
+training split only, exactly like the tercile edges, or the label definition
+leaks the test distribution.
+
+`et_present` is not fixable by any threshold. Enhancing tumour is present in
+98.6% of cases at a threshold of *one voxel*, the median case has 33,048 ET
+voxels — 66× the current threshold — and only 2 of 146 cases have none at all.
+Pushing the threshold to 16,000 still leaves prevalence at 0.733 while turning
+the label into "large ET" rather than "ET present", which is what `et_fraction`
+already measures. The schema's own design note says:
+
+> Each was chosen to have non-degenerate class prevalence -- e.g. "edema
+> present" is deliberately excluded because it is true in almost every BraTS
+> case and would be trivially predictable, inflating accuracy while telling us
+> nothing about calibration.
+
+`et_present` at 0.973 **is** that excluded case. The note describes an intention
+the constant never delivered on real data; on the phantoms it did, because
+`synthetic.py` draws a latent grade that decides whether an enhancing rim exists
+at all. The finding survived the move to BraTS unexamined.
+
+**Consequence for the gate.** Case confidence is the minimum over the criticals,
+so a near-constant critical contributes a near-constant term that the minimum
+almost never selects — it is dead weight, not a safeguard. After F11 the gate
+works, but it works through `laterality` alone. Three criticals are being
+claimed and one is doing the work.
+
+The remedy is a schema decision, not a bug fix, and it is recorded here
+unresolved: `et_present` can be dropped, demoted to non-critical, or replaced by
+a magnitude finding — and separately, `min_voxels` should become train-fitted so
+`ncr_present` stops being decided by a phantom-era constant.
+
+---
+
 ## Standing caveats
 
 > **F1-F3d are provisional and must be re-run.** Every number above was produced
@@ -763,3 +832,16 @@ now with routing on the winning side of the total.
 - Case-level accuracy is the **conjunction** of three critical findings being
   simultaneously correct, so it reads much lower than per-finding accuracy.
   Per-finding numbers are in the JSON under `per_finding`.
+
+> **The study artifacts are gone.** The table cache (`arrays.npz` + `meta.json`,
+> holding every truth vector, quality metric and split), both result JSONs, and
+> the extracted BraTS 2021 volumes no longer exist on either drive; both are
+> ~98% full and neither recycle bin holds them. What survives is this document,
+> the code, and the raw BraTS-Africa download. The two 3.5 GB slice caches under
+> `D:\cgate_cache` are orphaned: `SliceCacheWriter` stores modalities only and
+> never the segmentation, so without the table they carry no labels.
+>
+> Every number in F11 and F12 therefore stands in the record but cannot be
+> re-run, re-seeded, or re-analysed without re-acquiring BraTS 2021. Treat them
+> as reported results, not as a reproducible baseline. F13 is measured from the
+> surviving masks and is reproducible.
