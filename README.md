@@ -47,15 +47,23 @@ expert is required to produce the **same** target:
 
 | Finding | Classes | Critical | Derived from |
 |---|---|---|---|
-| `et_present` | absent / present | yes | ET volume ≥ threshold |
-| `ncr_present` | absent / present | yes | NCR volume ≥ threshold |
-| `laterality` | left / right / bilateral | yes | WT mass about the mid-sagittal plane |
+| `et_present` | absent / present | no | ET volume ≥ 500 voxels |
+| `ncr_present` | absent / present | **yes** | NCR volume ≥ train-fitted cut |
+| `laterality` | left / right / bilateral | **yes** | WT mass about the mid-sagittal plane |
 | `burden` | small / medium / large | no | WT volume tercile |
 | `et_fraction` | low / mid / high | no | ET/WT ratio tercile |
 
 Every finding is derivable from the BraTS mask alone — no extra annotation.
 "Edema present" is deliberately excluded: it is true in nearly every case, so it
 would inflate accuracy while telling us nothing about calibration.
+
+`et_present` turned out to be that same case and is no longer critical. Measured
+over 146 real BraTS masks it is present in 97.3% of them, and in 98.6% at a
+threshold of a single voxel — no threshold makes it a question. It is still
+reported; it just no longer gates a case. `ncr_present` failed for the opposite
+reason, a fixed threshold an order of magnitude below the real distribution, so
+its cut is now fitted on the training split like the tercile edges. See F13 in
+[docs/findings.md](docs/findings.md), reproducible via `tools/prevalence.py`.
 
 Segmentation is **upstream** of this target (voxel experts reduce their predicted
 mask through the same reduction) and is reported as an auxiliary metric. It is

@@ -8,12 +8,14 @@ from cgate.findings import (
     region_volumes,
 )
 from cgate.schema import (
+    CRITICAL_MASK,
     FINDING_SCHEMA,
     LABEL_ED,
     LABEL_ET,
     LABEL_NCR,
     N_FINDINGS,
     finding_index,
+    spec_by_name,
     validate_probs,
 )
 
@@ -129,3 +131,94 @@ def test_empty_mask_does_not_crash():
     ext = FindingExtractor(min_voxels=1)
     with pytest.raises(ValueError, match="empty"):
         ext.fit_from_measurements(meas)
+
+
+# --- F13: what gates a case, and where the NCR cut comes from ---------------
+
+
+def test_the_critical_set_is_exactly_ncr_present_and_laterality():
+    """Pin the critical set: it decides what a case is gated on.
+
+    Nothing else in the suite constrains it, so demoting or promoting a finding
+    used to be a silent one-word edit. `et_present` is deliberately absent --
+    F13 measured it at 0.973 prevalence on real BraTS masks, and a near-constant
+    finding contributes a near-constant term to a minimum that never selects it.
+    """
+    critical = {s.name for s in FINDING_SCHEMA if s.critical}
+    assert critical == {"ncr_present", "laterality"}
+
+
+def test_et_present_is_reported_but_does_not_gate():
+    assert "et_present" in {s.name for s in FINDING_SCHEMA}
+    assert not spec_by_name("et_present").critical
+    assert not CRITICAL_MASK[finding_index("et_present")]
+
+
+def _measurements_with_ncr(volumes):
+    return [
+        {
+            "wt": 100_000.0,
+            "tc": float(v),
+            "et": 0.0,
+            "ncr": float(v),
+            "et_fraction": 0.0,
+            "laterality": 0.0,
+        }
+        for v in volumes
+    ]
+
+
+def test_ncr_cut_is_the_training_median_so_the_finding_is_balanced():
+    # A spread where a fixed 500-voxel threshold calls every case present.
+    meas = _measurements_with_ncr(range(1_000, 21_000, 200))
+    ext = FindingExtractor(min_voxels=500).fit_from_measurements(meas)
+
+    assert ext.ncr_cut > 500, "an unfitted cut leaves the phantom-era constant"
+    labels = ext.labels_from_measurements(meas)[:, finding_index("ncr_present")]
+    assert 0.45 <= labels.mean() <= 0.55
+
+    # The same data under the old fixed threshold is the degeneracy F13 found.
+    fixed = FindingExtractor(min_voxels=500, burden_edges=(1.0, 2.0), et_fraction_edges=(0.1, 0.2))
+    assert fixed.labels_from_measurements(meas)[:, finding_index("ncr_present")].mean() == 1.0
+
+
+def test_ncr_cut_never_falls_below_the_annotation_jitter_floor():
+    """On a cohort with genuinely tiny necrosis, balance must lose to the floor.
+
+    Splitting at a median of 5 voxels would make `ncr_present` balanced by
+    calling annotation jitter a finding -- a label that is wrong rather than
+    merely uninformative.
+    """
+    ext = FindingExtractor(min_voxels=500).fit_from_measurements(
+        _measurements_with_ncr([2, 3, 4, 5, 6, 7, 8])
+    )
+    assert ext.ncr_cut == 500.0
+
+
+def test_ncr_cut_is_fitted_on_train_only_and_then_frozen():
+    train = _measurements_with_ncr(range(1_000, 3_000, 100))
+    ext = FindingExtractor(min_voxels=500).fit_from_measurements(train)
+    cut = ext.ncr_cut
+
+    # A test split an order of magnitude larger must not move the label
+    # definition; labelling it goes through the frozen cut.
+    held_out = _measurements_with_ncr(range(50_000, 70_000, 1_000))
+    labels = ext.labels_from_measurements(held_out)[:, finding_index("ncr_present")]
+    assert ext.ncr_cut == cut
+    assert labels.mean() == 1.0, "held-out cases are all above the frozen cut"
+
+
+def test_extract_and_labels_from_measurements_agree_on_the_fitted_cut():
+    masks = []
+    for size in range(6, 18):
+        m = _blank((40, 20, 12))
+        m[0:size, 0:size, 0:6] = LABEL_ED
+        m[0:size, 0:2, 0:2] = LABEL_NCR
+        masks.append(m)
+
+    ext = FindingExtractor(min_voxels=1).fit(masks)
+    from_masks = ext.extract_many(masks)[:, finding_index("ncr_present")]
+    from_meas = ext.labels_from_measurements([measure(m) for m in masks])[
+        :, finding_index("ncr_present")
+    ]
+    assert np.array_equal(from_masks, from_meas)

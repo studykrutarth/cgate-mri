@@ -5,8 +5,8 @@ in `cgate.schema`. Ground-truth findings come from the reference mask; a CNN/ViT
 expert's findings come from running the same reduction on its *predicted* mask,
 which is what makes voxel-level and case-level experts comparable at all.
 
-Anything fitted from data (the tercile edges) is fitted on the training split
-only and then frozen -- see `FindingExtractor.fit`.
+Anything fitted from data (the tercile edges, and the NCR presence threshold)
+is fitted on the training split only and then frozen -- see `FindingExtractor.fit`.
 """
 
 from __future__ import annotations
@@ -25,7 +25,12 @@ from .schema import (
 )
 
 # 0.5 mL at 1 mm isotropic. Below this a "finding" is indistinguishable from
-# annotation jitter, so calling it present would inject label noise.
+# annotation jitter, so calling it present would inject label noise. This is a
+# *floor*, not a cut point: it says what is too small to trust, not what makes
+# an interesting question. F13 showed the two were being conflated -- 500 voxels
+# sits an order of magnitude below the real NCR distribution, so `ncr_present`
+# came out 0.78 prevalent and told the gate nothing. `FindingExtractor` now fits
+# the NCR cut point on the training split and uses this only as its lower bound.
 DEFAULT_MIN_VOXELS = 500
 
 # Fraction of whole-tumour volume that must sit on the minority side before the
@@ -137,6 +142,7 @@ class FindingExtractor:
     """Mask -> finding-vector reduction with train-fitted tercile edges."""
 
     min_voxels: int = DEFAULT_MIN_VOXELS
+    ncr_min_voxels: float | None = None
     spatial_axis: int = 0
     left_is_low_index: bool = True
     bilateral_fraction: float = DEFAULT_BILATERAL_FRACTION
@@ -146,7 +152,7 @@ class FindingExtractor:
 
     # -- fitting -----------------------------------------------------------
     def fit(self, masks: list[np.ndarray]) -> FindingExtractor:
-        """Fit tercile edges on the training split only.
+        """Fit the tercile edges and the NCR cut point on the training split only.
 
         Call this with training masks and nothing else. Fitting on all data
         would leak the test distribution into the label definition.
@@ -156,6 +162,7 @@ class FindingExtractor:
 
         burdens: list[float] = []
         et_fracs: list[float] = []
+        ncrs: list[float] = []
         for m in masks:
             vols = region_volumes(m)
             wt = vols["WT"]
@@ -163,25 +170,29 @@ class FindingExtractor:
                 continue
             burdens.append(float(wt))
             et_fracs.append(vols["ET"] / wt)
+            ncrs.append(float(vols["NCR"]))
 
         if not burdens:
             raise ValueError("every training mask was empty; cannot fit terciles")
 
         self.burden_edges = _edges_from(burdens)
         self.et_fraction_edges = _edges_from(et_fracs)
+        self.ncr_min_voxels = self._ncr_cut_from(ncrs)
         self._fitted = True
         return self
 
     def fit_from_measurements(
         self, measurements: list[dict[str, float]]
     ) -> FindingExtractor:
-        """Fit tercile edges from `measure` output for the training split only."""
+        """Fit the edges and the NCR cut from `measure` output, train split only."""
         burdens = [m["wt"] for m in measurements if m["wt"] > 0]
         et_fracs = [m["et_fraction"] for m in measurements if m["wt"] > 0]
+        ncrs = [m["ncr"] for m in measurements if m["wt"] > 0]
         if not burdens:
             raise ValueError("every training case was empty; cannot fit terciles")
         self.burden_edges = _edges_from(burdens)
         self.et_fraction_edges = _edges_from(et_fracs)
+        self.ncr_min_voxels = self._ncr_cut_from(ncrs)
         self._fitted = True
         return self
 
@@ -199,13 +210,33 @@ class FindingExtractor:
         out = np.zeros((len(measurements), N_FINDINGS), dtype=np.int64)
         for i, m in enumerate(measurements):
             out[i, finding_index("et_present")] = int(m["et"] >= self.min_voxels)
-            out[i, finding_index("ncr_present")] = int(m["ncr"] >= self.min_voxels)
+            out[i, finding_index("ncr_present")] = int(m["ncr"] >= self.ncr_cut)
             out[i, finding_index("laterality")] = int(m["laterality"])
             out[i, finding_index("burden")] = _tercile_class(m["wt"], self.burden_edges)
             out[i, finding_index("et_fraction")] = _tercile_class(
                 m["et_fraction"], self.et_fraction_edges
             )
         return out
+
+    def _ncr_cut_from(self, ncrs: list[float]) -> float:
+        """Cut point for `ncr_present`: the training median, floored at min_voxels.
+
+        The median makes the finding balanced on the training cohort by
+        construction, which is the whole point -- a binary finding at 0.78
+        prevalence is answered correctly 78% of the time by a constant, so it
+        contributes nothing to a confidence signal. The floor keeps the
+        annotation-jitter guarantee: on a cohort whose necrosis is genuinely
+        tiny, calling half the cases positive would mean calling jitter a
+        finding, and a degenerate label is better than a wrong one.
+        """
+        if not ncrs:
+            return float(self.min_voxels)
+        return max(float(self.min_voxels), float(np.median(np.asarray(ncrs, dtype=np.float64))))
+
+    @property
+    def ncr_cut(self) -> float:
+        """Threshold actually used for `ncr_present`; falls back when unfitted."""
+        return float(self.min_voxels if self.ncr_min_voxels is None else self.ncr_min_voxels)
 
     @property
     def is_fitted(self) -> bool:
@@ -229,7 +260,7 @@ class FindingExtractor:
         out = np.zeros(N_FINDINGS, dtype=np.int64)
 
         out[finding_index("et_present")] = int(vols["ET"] >= self.min_voxels)
-        out[finding_index("ncr_present")] = int(vols["NCR"] >= self.min_voxels)
+        out[finding_index("ncr_present")] = int(vols["NCR"] >= self.ncr_cut)
         out[finding_index("laterality")] = laterality_split(
             mask,
             spatial_axis=self.spatial_axis,

@@ -65,18 +65,27 @@ class FindingSpec:
 # was. Measured over 146 BraTS-Africa masks (F13): `et_present` is true in 0.973
 # of cases at the current threshold and in 0.986 at a threshold of one voxel, so
 # it is precisely the "edema present" case the paragraph above says was excluded.
-# `ncr_present` is 0.781, degenerate for a different reason -- DEFAULT_MIN_VOXELS
-# is a phantom-era constant an order of magnitude below the real NCR
-# distribution. Neither is fixed here; both are load-bearing, since `critical`
-# below decides what gates a case.
+# `ncr_present` is 0.781, degenerate for a different reason -- 500 voxels is a
+# phantom-era constant an order of magnitude below the real NCR distribution.
+#
+# Resolved differently for each, because they fail differently. `ncr_present`
+# responds to the threshold, so `FindingExtractor` now fits it on the training
+# split. `et_present` responds to no threshold, so it is demoted out of the
+# critical set rather than redefined: it stays a reported finding and stops
+# gating cases.
 # ---------------------------------------------------------------------------
 FINDING_SCHEMA: tuple[FindingSpec, ...] = (
     FindingSpec(
         name="et_present",
         classes=("absent", "present"),
-        critical=True,
-        description="Enhancing tumour above volume threshold. Varies with grade; "
-        "low-grade gliomas frequently lack enhancement.",
+        # Not critical: measured at 0.973 prevalence on real BraTS masks and
+        # 0.986 at a threshold of one voxel (F13). Still reported, because
+        # "does this tumour enhance" is a real question and the answer is
+        # occasionally no -- but a near-constant finding cannot gate a case.
+        critical=False,
+        description="Enhancing tumour above volume threshold. Intended to vary "
+        "with grade, and does on the phantoms; on real BraTS gliomas it is "
+        "present in almost every case -- see F13.",
     ),
     FindingSpec(
         name="ncr_present",

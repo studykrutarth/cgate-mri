@@ -497,7 +497,7 @@ def main(argv: list[str] | None = None) -> int:
         for name, info in split_summary(splits, table.cohorts).items():
             print(f"  {name:<6} {info}")
 
-    # Tercile edges are fitted on train only.
+    # Tercile edges and the ncr_present cut are fitted on train only.
     min_voxels = args.min_voxels
     if min_voxels is None:
         # Also keyed off the table, not --data: phantoms are generated at a much
@@ -510,6 +510,11 @@ def main(argv: list[str] | None = None) -> int:
     table.assign_labels(extractor)
 
     if verbose:
+        print()
+        print(
+            f"Thresholds: et_present >= {min_voxels:,} voxels (fixed), "
+            f"ncr_present >= {extractor.ncr_cut:,.0f} voxels (fitted on train)"
+        )
         print("\nLabel prevalence (all cases):")
         for finding, dist in label_prevalence(table.labels).items():
             pretty = "  ".join(f"{k}={v:.2f}" for k, v in dist.items())
@@ -675,6 +680,11 @@ def main(argv: list[str] | None = None) -> int:
             # Where the cases actually came from, which survives a reused table.
             "source": _to_jsonable(table.source),
             "min_voxels": min_voxels,
+            # The cut point for `ncr_present` is fitted on the training split
+            # (F13), so unlike min_voxels it is a property of the cohort rather
+            # than of the command line, and two runs over different splits are
+            # not labelled the same way.
+            "ncr_min_voxels": extractor.ncr_cut,
             # Recorded because surrogate and torch runs are not interchangeable
             # as evidence, and the distinction is invisible in the numbers.
             "experts": args.experts,

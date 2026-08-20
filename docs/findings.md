@@ -799,10 +799,33 @@ almost never selects — it is dead weight, not a safeguard. After F11 the gate
 works, but it works through `laterality` alone. Three criticals are being
 claimed and one is doing the work.
 
-The remedy is a schema decision, not a bug fix, and it is recorded here
-unresolved: `et_present` can be dropped, demoted to non-critical, or replaced by
-a magnitude finding — and separately, `min_voxels` should become train-fitted so
-`ncr_present` stops being decided by a phantom-era constant.
+### Resolved, differently for each
+
+`ncr_present` keeps its meaning and gets a fitted cut. `FindingExtractor` now
+derives it from the median NCR volume of the **training split**, alongside the
+tercile edges and under the same rule -- fit on train, then frozen -- so it
+cannot leak the test distribution into the label definition. `DEFAULT_MIN_VOXELS`
+survives as a *floor*, not a cut point: on a cohort whose necrosis is genuinely
+tiny, splitting at the median would balance the finding by calling annotation
+jitter positive, and a degenerate label beats a wrong one. On the phantoms the
+fitted cut is 135 voxels and prevalence moves to 0.49 / 0.51.
+
+`et_present` keeps its meaning and stops gating. It is now `critical=False`:
+still derived, still reported, no longer part of the minimum. Redefining it as
+"large ET" would have made it balanced at the cost of duplicating `et_fraction`
+and of the label no longer meaning what it says.
+
+**The critical set is now `{ncr_present, laterality}`** -- two findings that
+carry signal, rather than three of which one did. Nothing in the suite
+previously constrained that set, so promoting or demoting a finding was a silent
+one-word edit; a test now pins it and says why.
+
+What this does *not* do is re-open F12. The change alters the labels, so the
+recorded numbers are not comparable with any run made under it, and there is no
+data left to re-run them against. F12 stands as a result obtained under a gate
+taking a minimum over two constants and a noise source. Whether the routing
+effect survives a critical set that carries signal is now the open question,
+and it needs BraTS 2021 back before it can be asked.
 
 ---
 
