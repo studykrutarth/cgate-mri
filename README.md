@@ -24,7 +24,7 @@ did not help and that is the result we report.
 
 ```bash
 pip install -e ".[sci,dev]"
-pytest -q                                       # 146 tests, ~70s
+pytest -q                                       # 193 tests, ~170s
 cgate --n-cases 400 --figures runs/figs         # ablation grid + plots
 ```
 
@@ -350,15 +350,81 @@ ignored when they disagree with what the table was built with.
 
 ---
 
+## Grounded report generation (Project-II)
+
+`cgate-report` turns a run's exported test-split predictions into one
+radiology-style report per case. Two properties are non-negotiable:
+
+- **Every sentence is grounded.** Each carries evidence — a calibrated finding
+  probability, an image-quality metric, or the gate decision — recorded in a
+  per-sentence *grounding ledger* rendered alongside the report. A sentence
+  without evidence is never emitted (`assert_grounded`).
+- **The gate still decides what is released.** Deferred cases render a
+  deferral notice naming the weakest critical finding, not a released report.
+
+BraTS has no free-text reports, so this is evaluated structurally (grounding,
+deferral correctness, VLM-contradiction vetoes) rather than against reference
+text — see [Scope](#scope).
+
+### Workflow
+
+```bash
+# 1. Run the grid and export per-case fused predictions for one system (B6):
+cgate run --data brats --root <data> --experts torch --pretrained \
+    --out runs/results.json --predictions runs/predictions.json --report-system B6
+
+# 2. Render grounded reports (deterministic template; offline, no VLM):
+pip install -e ".[vlm]"                             # adds transformers etc.
+cgate-report --preds runs/predictions.json --out runs/reports
+
+# 3. Optionally add VLM appearance phrases over a 4-sequence mosaic:
+cgate-report --preds runs/predictions.json --out runs/reports \
+    --vlm --slice-cache runs/cache --limit 25
+```
+
+Output per case: `<patient>.md` (report + ledger) and `<patient>.json`
+(machine-readable sidecar), plus `index.md`.
+
+### The VLM is advisory, never authoritative
+
+The optional VLM (`--vlm`, default `google/medgemma-4b-it`, falling back to
+`Qwen/Qwen2-VL-2B-Instruct`) contributes only *qualitative appearance* —
+signal, margins, enhancement pattern, mass effect. It never states
+presence/absence of a finding, never feeds the confidence or the gate, and
+every phrase passes a **veto filter** (`grounding.VETO_RULES`) that drops any
+phrase contradicting a firm calibrated finding — e.g. "no enhancement" is
+vetoed when `et_present` is predicted present at p ≥ 0.7. Vetoed phrases are
+listed in the report with the reason, never silently discarded. If no VLM can
+be loaded, reports render deterministic-template-only.
+
+### Layout of the module
+
+```
+src/cgate/reporting/
+  grounding.py   the contract: Sentence + Evidence, ReportCase, VLM veto rules
+  template.py    deterministic findings → prose (hedged by confidence band)
+  vlm.py         4-sequence mosaic, VLM inference, phrase parsing
+  render.py      assembles report + ledger, JSON sidecar
+  cli.py         `cgate-report`
+```
+
+---
+
 ## Scope
 
 Project-I delivers routing + calibration + gating on structured findings.
-Report generation is **excluded**, because BraTS ships co-registered
-skull-stripped volumes and expert segmentations — and **no free-text reports**.
-There is nothing to train a report generator on or evaluate it against.
+Report generation was **excluded from Project-I**, because BraTS ships
+co-registered skull-stripped volumes and expert segmentations — and **no
+free-text reports**. There is nothing to train a report generator on or
+evaluate it against.
 
-Project-II picks up grounded generation, conditioned on the structured findings
-and gate decision this project produces.
+Project-II picks up grounded generation, conditioned on the structured
+findings and gate decision this project produces — and is now implemented
+(see [Grounded report generation](#grounded-report-generation-project-ii)).
+Because there is no reference text, generated reports are audited by a
+*grounding ledger* (every sentence traced to a probability, quality metric or
+the gate decision), not by text-similarity metrics against a gold report that
+does not exist.
 
 ---
 
@@ -376,6 +442,7 @@ src/cgate/
   pipeline.py     ingest → fit → calibrate → route → gate
   data/           synthetic phantoms, BraTS loader, feature views, splits
   experts/        expert contract + scikit-learn experts (see experts/README.md)
+  reporting/      grounded report generation (Project-II, see cgate-report)
   experiments/    ablation grid, metrics, figures, CLI
 docs/
   quality-metrics.md   IQM definitions and the skull-stripping trap

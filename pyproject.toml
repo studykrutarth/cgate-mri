@@ -20,10 +20,14 @@ sci = ["scipy>=1.10", "scikit-learn>=1.3", "pandas>=2.0", "matplotlib>=3.7"]
 io = ["nibabel>=5.0", "SimpleITK>=2.3"]
 radiomics = ["pyradiomics>=3.1", "xgboost>=2.0"]
 torch = ["torch>=2.2", "timm>=0.9"]
+# Report generation is optional on the same grounds: the template path stays
+# numpy-only, and only the VLM phrase layer needs the transformers stack.
+vlm = ["transformers>=4.45", "accelerate>=0.33", "pillow>=9"]
 dev = ["pytest>=7.4"]
 
 [project.scripts]
 cgate = "cgate.experiments.run:main"
+cgate-report = "cgate.reporting.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

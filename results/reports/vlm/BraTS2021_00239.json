@@ -1,0 +1,183 @@
+{
+  "patient_id": "BraTS2021_00239",
+  "cohort": "high",
+  "released": false,
+  "confidence": 0.5321932987508027,
+  "gate_threshold": 0.5506190066529876,
+  "predicted": {
+    "et_present": {
+      "class": "present",
+      "p": 0.986016600771917
+    },
+    "ncr_present": {
+      "class": "absent",
+      "p": 0.5321932987508027
+    },
+    "laterality": {
+      "class": "left",
+      "p": 0.9991734122049165
+    },
+    "burden": {
+      "class": "medium",
+      "p": 0.5070211829624449
+    },
+    "et_fraction": {
+      "class": "mid",
+      "p": 0.6441649969267008
+    }
+  },
+  "weakest_critical": {
+    "finding": "ncr_present",
+    "class": "absent",
+    "p": 0.5321932987508027
+  },
+  "vlm_model": "Qwen/Qwen2-VL-2B-Instruct",
+  "vlm_phrases": [
+    "T1 and T1ce show a hyperintense lesion with a heterogeneous appearance, while T2 and FLAIR show a hypointense lesion with a more homogeneous appearance.",
+    "The lesion has a slightly irregular margin on T1 and T1ce, but is well-defined on T2 and FLAIR."
+  ],
+  "vlm_rejected": [
+    {
+      "phrase": "There is no apparent enhancement pattern on any of the sequences.",
+      "vetoed_by": "phrase denies enhancement while et_present is predicted present"
+    }
+  ],
+  "sentences": [
+    {
+      "text": "Pre-operative multi-sequence MRI: axial T1, contrast-enhanced T1 (T1ce), T2 and FLAIR, co-registered, skull-stripped and resampled to 1 mm isotropic (BraTS preparation).",
+      "evidence": [
+        {
+          "source": "meta",
+          "detail": "brats-protocol"
+        }
+      ]
+    },
+    {
+      "text": "No necrotic / non-enhancing core exceeds the volume threshold (confidence 0.53). This finding is low-confidence and is hedged accordingly.",
+      "evidence": [
+        {
+          "source": "finding:ncr_present",
+          "detail": "absent p=0.53"
+        }
+      ]
+    },
+    {
+      "text": "The whole-tumour mass is predominantly left-sided (confidence 1.00).",
+      "evidence": [
+        {
+          "source": "finding:laterality",
+          "detail": "left p=1.00"
+        }
+      ]
+    },
+    {
+      "text": "An enhancing tumour component is present (confidence 0.99).",
+      "evidence": [
+        {
+          "source": "finding:et_present",
+          "detail": "present p=0.99"
+        }
+      ]
+    },
+    {
+      "text": "Whole-tumour burden is assessed as medium (volume tercile fitted on the training split; confidence 0.51). This finding is low-confidence and is hedged accordingly.",
+      "evidence": [
+        {
+          "source": "finding:burden",
+          "detail": "medium p=0.51"
+        }
+      ]
+    },
+    {
+      "text": "The enhancing fraction of the whole tumour is mid (ET/WT tercile fitted on the training split; confidence 0.64). This finding is low-confidence and is hedged accordingly.",
+      "evidence": [
+        {
+          "source": "finding:et_fraction",
+          "detail": "mid p=0.64"
+        }
+      ]
+    },
+    {
+      "text": "Acquisition quality (cjv, efc, snr, sharpness, inu, contrast, entropy) is within the range of the training cohort.",
+      "evidence": [
+        {
+          "source": "iqm:cjv",
+          "detail": "mean|z|=0.48"
+        },
+        {
+          "source": "iqm:efc",
+          "detail": "mean|z|=0.48"
+        },
+        {
+          "source": "iqm:snr",
+          "detail": "mean|z|=0.48"
+        },
+        {
+          "source": "iqm:sharpness",
+          "detail": "mean|z|=0.48"
+        },
+        {
+          "source": "iqm:inu",
+          "detail": "mean|z|=0.48"
+        },
+        {
+          "source": "iqm:contrast",
+          "detail": "mean|z|=0.48"
+        },
+        {
+          "source": "iqm:entropy",
+          "detail": "mean|z|=0.48"
+        }
+      ]
+    },
+    {
+      "text": "T1 and T1ce show a hyperintense lesion with a heterogeneous appearance, while T2 and FLAIR show a hypointense lesion with a more homogeneous appearance.",
+      "evidence": [
+        {
+          "source": "vlm",
+          "detail": "model=Qwen/Qwen2-VL-2B-Instruct"
+        }
+      ]
+    },
+    {
+      "text": "The lesion has a slightly irregular margin on T1 and T1ce, but is well-defined on T2 and FLAIR.",
+      "evidence": [
+        {
+          "source": "vlm",
+          "detail": "model=Qwen/Qwen2-VL-2B-Instruct"
+        }
+      ]
+    },
+    {
+      "text": "DEFERRED TO RADIOLOGIST: case confidence 0.53 is below the calibrated gate threshold 0.55.",
+      "evidence": [
+        {
+          "source": "gate",
+          "detail": "deferred c=0.53 t=0.55"
+        }
+      ]
+    },
+    {
+      "text": "Lowest-confidence critical finding: ncr_present -> absent (confidence 0.53).",
+      "evidence": [
+        {
+          "source": "finding:ncr_present",
+          "detail": "weakest-critical absent p=0.53"
+        }
+      ]
+    },
+    {
+      "text": "For radiologist confirmation: ncr_present absent (p=0.53); laterality left (p=1.00).",
+      "evidence": [
+        {
+          "source": "finding:ncr_present",
+          "detail": "absent p=0.53"
+        },
+        {
+          "source": "finding:laterality",
+          "detail": "left p=1.00"
+        }
+      ]
+    }
+  ]
+}

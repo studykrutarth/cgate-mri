@@ -1,5 +1,12 @@
 # Scope: why report generation is not in Project-I
 
+> **Update:** Project-II has since been implemented — see
+> `cgate/reporting/` (`cgate-report`) and the README's
+> *Grounded report generation* section. The reasoning below is kept because it
+> explains *why* the implementation is built the way it is: generation is
+> conditioned on the structured findings and gate decision, every sentence is
+> traceable to evidence, and no reference-text metric is claimed.
+
 ## The blocking fact
 
 **BraTS contains no radiology reports.**

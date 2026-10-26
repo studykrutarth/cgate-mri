@@ -1,0 +1,901 @@
+{
+  "config": {
+    "data": "brats",
+    "root": [
+      "<workspace>\\data"
+    ],
+    "cohort": null,
+    "n_cases": 240,
+    "low_quality_fraction": 0.35,
+    "seed": 0,
+    "protocol": "stratified",
+    "test_cohort": "low",
+    "calib_target_fraction": 0.0,
+    "target_coverage": 0.8,
+    "shape": [
+      48,
+      48,
+      32
+    ],
+    "min_voxels": null,
+    "out": "<workspace>\\runs\\brats_full_seed0.json",
+    "figures": "<workspace>\\runs\\figs",
+    "predictions": "<workspace>\\runs\\predictions.json",
+    "report_system": "B6",
+    "experts": "torch",
+    "slice_cache": "<workspace>\\runs\\cache",
+    "table_cache": "<workspace>\\runs\\table",
+    "rebuild_table": false,
+    "epochs": 12,
+    "n_slices": 16,
+    "arch": "resnet50",
+    "img_size": 128,
+    "vit_arch": "vit_small_patch16_224",
+    "vit_img_size": 224,
+    "pretrained": true,
+    "max_cases": null,
+    "sample_seed": 0,
+    "batch_size": 32,
+    "amp": null,
+    "device": null,
+    "router_shared": false,
+    "router_l2": null,
+    "bootstrap": 2000,
+    "quiet": false
+  },
+  "n_cases": 1251,
+  "splits": {
+    "train": {
+      "n_cases": 751,
+      "strata": {
+        "high": 751
+      }
+    },
+    "calib": {
+      "n_cases": 250,
+      "strata": {
+        "high": 250
+      }
+    },
+    "test": {
+      "n_cases": 250,
+      "strata": {
+        "high": 250
+      }
+    }
+  },
+  "label_prevalence": {
+    "et_present": {
+      "absent": 0.04476418864908074,
+      "present": 0.9552358113509193
+    },
+    "ncr_present": {
+      "absent": 0.5051958433253397,
+      "present": 0.49480415667466027
+    },
+    "laterality": {
+      "left": 0.478017585931255,
+      "right": 0.42685851318944845,
+      "bilateral": 0.09512390087929656
+    },
+    "burden": {
+      "small": 0.3213429256594724,
+      "medium": 0.35251798561151076,
+      "large": 0.3261390887290168
+    },
+    "et_fraction": {
+      "low": 0.328537170263789,
+      "mid": 0.3237410071942446,
+      "high": 0.34772182254196643
+    }
+  },
+  "results": {
+    "B0": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.62,
+        "full_risk": 0.38,
+        "aurc": 0.29268748398064326,
+        "optimal_aurc": 0.0843764795520008,
+        "excess_aurc": 0.20831100442864248,
+        "confidence_ece": 0.035430223681066665,
+        "risk_at_80pct_coverage": 0.335,
+        "coverage_at_5pct_risk": 0.012,
+        "coverage_at_10pct_risk": 0.012
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.02849805628395965,
+          "adaptive_ece": 0.025992068033595037,
+          "brier": 0.06488328442883066,
+          "nll": 0.1340717817271233
+        },
+        "ncr_present": {
+          "accuracy": 0.716,
+          "ece": 0.07270443695969456,
+          "adaptive_ece": 0.0928124764937081,
+          "brier": 0.4001686117194016,
+          "nll": 0.5863677707262902
+        },
+        "laterality": {
+          "accuracy": 0.876,
+          "ece": 0.13879659966308175,
+          "adaptive_ece": 0.1387965996630817,
+          "brier": 0.2357899369799787,
+          "nll": 0.47534615124229357
+        },
+        "burden": {
+          "accuracy": 0.704,
+          "ece": 0.13835435399681076,
+          "adaptive_ece": 0.13835435399681073,
+          "brier": 0.43139496570864433,
+          "nll": 0.7259019571739145
+        },
+        "et_fraction": {
+          "accuracy": 0.528,
+          "ece": 0.06564812334222109,
+          "adaptive_ece": 0.09435573153096502,
+          "brier": 0.5954879060300844,
+          "nll": 0.9925400466365368
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.62,
+          "full_risk": 0.38,
+          "aurc": 0.29268748398064326,
+          "optimal_aurc": 0.0843764795520008,
+          "excess_aurc": 0.20831100442864248,
+          "confidence_ece": 0.035430223681066665,
+          "risk_at_80pct_coverage": 0.335,
+          "coverage_at_5pct_risk": 0.012,
+          "coverage_at_10pct_risk": 0.012
+        }
+      },
+      "gate": {
+        "threshold": 0.5348413119837823,
+        "coverage": 0.772,
+        "selective_risk": 0.32642487046632124,
+        "full_risk": 0.38,
+        "error_reduction": 0.14098718298336518,
+        "n_deferred": 57,
+        "n_total": 250,
+        "summary": "threshold=0.5348  coverage=77.2%  error 38.0% -> 32.6% (+14.1% relative)  deferred 57/250"
+      },
+      "spec": {
+        "key": "B0",
+        "label": "Single CNN, raw softmax",
+        "isolates": "uncalibrated floor",
+        "fusion": "single",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "gate_threshold": 0.534841
+      }
+    },
+    "B1": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.62,
+        "full_risk": 0.38,
+        "aurc": 0.2981083178765674,
+        "optimal_aurc": 0.0843764795520008,
+        "excess_aurc": 0.2137318383245666,
+        "confidence_ece": 0.05630347017662653,
+        "risk_at_80pct_coverage": 0.35,
+        "coverage_at_5pct_risk": 0.012,
+        "coverage_at_10pct_risk": 0.012
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.029089965810419054,
+          "adaptive_ece": 0.023027831136169217,
+          "brier": 0.06457078695415452,
+          "nll": 0.1329648589547727
+        },
+        "ncr_present": {
+          "accuracy": 0.716,
+          "ece": 0.10509469321905765,
+          "adaptive_ece": 0.12271851373776589,
+          "brier": 0.4128715617408003,
+          "nll": 0.6020652674476089
+        },
+        "laterality": {
+          "accuracy": 0.876,
+          "ece": 0.032619098476584396,
+          "adaptive_ece": 0.047810269180627654,
+          "brier": 0.20472625315932783,
+          "nll": 0.43626304597623955
+        },
+        "burden": {
+          "accuracy": 0.704,
+          "ece": 0.10145589235667106,
+          "adaptive_ece": 0.12431257004082681,
+          "brier": 0.41258985769122525,
+          "nll": 0.679486028782651
+        },
+        "et_fraction": {
+          "accuracy": 0.528,
+          "ece": 0.09367118295883224,
+          "adaptive_ece": 0.1073106733293834,
+          "brier": 0.6001897212165865,
+          "nll": 1.0016464698845293
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.62,
+          "full_risk": 0.38,
+          "aurc": 0.2981083178765674,
+          "optimal_aurc": 0.0843764795520008,
+          "excess_aurc": 0.2137318383245666,
+          "confidence_ece": 0.05630347017662653,
+          "risk_at_80pct_coverage": 0.35,
+          "coverage_at_5pct_risk": 0.012,
+          "coverage_at_10pct_risk": 0.012
+        }
+      },
+      "gate": {
+        "threshold": 0.5501569046532485,
+        "coverage": 0.74,
+        "selective_risk": 0.33513513513513515,
+        "full_risk": 0.38,
+        "error_reduction": 0.1180654338549075,
+        "n_deferred": 65,
+        "n_total": 250,
+        "summary": "threshold=0.5502  coverage=74.0%  error 38.0% -> 33.5% (+11.8% relative)  deferred 65/250"
+      },
+      "spec": {
+        "key": "B1",
+        "label": "Single CNN + temperature scaling",
+        "isolates": "post-hoc calibration",
+        "fusion": "single",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "expert_temperatures": {
+          "cnn": [
+            0.8557,
+            0.5695,
+            0.6041,
+            0.3759,
+            0.3868
+          ]
+        },
+        "fused_temperatures": [
+          1.1197,
+          2.6811,
+          0.8185,
+          0.894,
+          1.2787
+        ],
+        "gate_threshold": 0.550157
+      }
+    },
+    "B2": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.604,
+        "full_risk": 0.396,
+        "aurc": 0.304395666836882,
+        "optimal_aurc": 0.09226522488362493,
+        "excess_aurc": 0.2121304419532571,
+        "confidence_ece": 0.033676207906290584,
+        "risk_at_80pct_coverage": 0.375,
+        "coverage_at_5pct_risk": 0.004,
+        "coverage_at_10pct_risk": 0.08
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.007068215540635325,
+          "adaptive_ece": 0.02961828504002915,
+          "brier": 0.06638760683523091,
+          "nll": 0.13767493783227336
+        },
+        "ncr_present": {
+          "accuracy": 0.704,
+          "ece": 0.07595326380418914,
+          "adaptive_ece": 0.11380275208598505,
+          "brier": 0.40937069165314305,
+          "nll": 0.5975857167357264
+        },
+        "laterality": {
+          "accuracy": 0.864,
+          "ece": 0.04488087370463407,
+          "adaptive_ece": 0.07374803487681546,
+          "brier": 0.20861614328446718,
+          "nll": 0.4325502807732701
+        },
+        "burden": {
+          "accuracy": 0.684,
+          "ece": 0.10739003602534633,
+          "adaptive_ece": 0.10512464141247212,
+          "brier": 0.4260539215469972,
+          "nll": 0.6931806644133429
+        },
+        "et_fraction": {
+          "accuracy": 0.512,
+          "ece": 0.09650057132030221,
+          "adaptive_ece": 0.10676437762879482,
+          "brier": 0.608471981223641,
+          "nll": 1.0217887636825975
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.604,
+          "full_risk": 0.396,
+          "aurc": 0.304395666836882,
+          "optimal_aurc": 0.09226522488362493,
+          "excess_aurc": 0.2121304419532571,
+          "confidence_ece": 0.033676207906290584,
+          "risk_at_80pct_coverage": 0.375,
+          "coverage_at_5pct_risk": 0.004,
+          "coverage_at_10pct_risk": 0.08
+        }
+      },
+      "gate": {
+        "threshold": 0.5522498596422339,
+        "coverage": 0.736,
+        "selective_risk": 0.3532608695652174,
+        "full_risk": 0.396,
+        "error_reduction": 0.10792709705753184,
+        "n_deferred": 66,
+        "n_total": 250,
+        "summary": "threshold=0.5522  coverage=73.6%  error 39.6% -> 35.3% (+10.8% relative)  deferred 66/250"
+      },
+      "spec": {
+        "key": "B2",
+        "label": "MC dropout (dropout active at inference)",
+        "isolates": "uncertainty by sampling",
+        "fusion": "single",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "expert_temperatures": {
+          "mc_dropout": [
+            0.8679,
+            0.5581,
+            0.601,
+            0.4125,
+            0.3859
+          ]
+        },
+        "fused_temperatures": [
+          1.0962,
+          2.4658,
+          0.8098,
+          0.8185,
+          1.1181
+        ],
+        "gate_threshold": 0.55225
+      }
+    },
+    "B3": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.596,
+        "full_risk": 0.404,
+        "aurc": 0.2662189584495834,
+        "optimal_aurc": 0.09636784883660118,
+        "excess_aurc": 0.1698511096129822,
+        "confidence_ece": 0.06263730659145758,
+        "risk_at_80pct_coverage": 0.345,
+        "coverage_at_5pct_risk": 0.1,
+        "coverage_at_10pct_risk": 0.16
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.022242624934601055,
+          "adaptive_ece": 0.03990900900161417,
+          "brier": 0.0628711664305184,
+          "nll": 0.1275987369608549
+        },
+        "ncr_present": {
+          "accuracy": 0.704,
+          "ece": 0.06560824891214133,
+          "adaptive_ece": 0.11675316861102387,
+          "brier": 0.39815016244005685,
+          "nll": 0.5835893170801865
+        },
+        "laterality": {
+          "accuracy": 0.86,
+          "ece": 0.04331042745643895,
+          "adaptive_ece": 0.05396429902258314,
+          "brier": 0.20344509776695202,
+          "nll": 0.41757773811733045
+        },
+        "burden": {
+          "accuracy": 0.72,
+          "ece": 0.10257015538446002,
+          "adaptive_ece": 0.0939216288128877,
+          "brier": 0.4113620485957904,
+          "nll": 0.6895015860697605
+        },
+        "et_fraction": {
+          "accuracy": 0.524,
+          "ece": 0.09676210441773743,
+          "adaptive_ece": 0.13509853820704507,
+          "brier": 0.5934207916502182,
+          "nll": 0.9898669451505957
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.596,
+          "full_risk": 0.404,
+          "aurc": 0.2662189584495834,
+          "optimal_aurc": 0.09636784883660118,
+          "excess_aurc": 0.1698511096129822,
+          "confidence_ece": 0.06263730659145758,
+          "risk_at_80pct_coverage": 0.345,
+          "coverage_at_5pct_risk": 0.1,
+          "coverage_at_10pct_risk": 0.16
+        }
+      },
+      "gate": {
+        "threshold": 0.5539304522106749,
+        "coverage": 0.752,
+        "selective_risk": 0.32978723404255317,
+        "full_risk": 0.404,
+        "error_reduction": 0.18369496524120507,
+        "n_deferred": 62,
+        "n_total": 250,
+        "summary": "threshold=0.5539  coverage=75.2%  error 40.4% -> 33.0% (+18.4% relative)  deferred 62/250"
+      },
+      "spec": {
+        "key": "B3",
+        "label": "Homogeneous 3x CNN deep ensemble",
+        "isolates": "ensembling alone",
+        "fusion": "single",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "expert_temperatures": {
+          "deep_ensemble": [
+            0.8742,
+            0.5591,
+            0.582,
+            0.3718,
+            0.3605
+          ]
+        },
+        "fused_temperatures": [
+          1.1026,
+          2.2834,
+          0.8428,
+          0.7841,
+          1.2192
+        ],
+        "gate_threshold": 0.55393
+      }
+    },
+    "B4": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.62,
+        "full_risk": 0.38,
+        "aurc": 0.22889775922539862,
+        "optimal_aurc": 0.0843764795520008,
+        "excess_aurc": 0.14452127967339784,
+        "confidence_ece": 0.07056398760812757,
+        "risk_at_80pct_coverage": 0.33,
+        "coverage_at_5pct_risk": 0.108,
+        "coverage_at_10pct_risk": 0.2
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.023658605791931145,
+          "adaptive_ece": 0.03427716289587475,
+          "brier": 0.06168553788738301,
+          "nll": 0.12376143706715174
+        },
+        "ncr_present": {
+          "accuracy": 0.728,
+          "ece": 0.05743300507046948,
+          "adaptive_ece": 0.0644890358710915,
+          "brier": 0.362326387834496,
+          "nll": 0.5417029789680651
+        },
+        "laterality": {
+          "accuracy": 0.86,
+          "ece": 0.05528290945609132,
+          "adaptive_ece": 0.08134966726705513,
+          "brier": 0.20161947512117298,
+          "nll": 0.44153989838830876
+        },
+        "burden": {
+          "accuracy": 0.732,
+          "ece": 0.0915599661376265,
+          "adaptive_ece": 0.10574017453750409,
+          "brier": 0.37020057900306436,
+          "nll": 0.6181545049173187
+        },
+        "et_fraction": {
+          "accuracy": 0.568,
+          "ece": 0.11166258840921149,
+          "adaptive_ece": 0.12915192040109696,
+          "brier": 0.556326165754341,
+          "nll": 0.9313062808882783
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.62,
+          "full_risk": 0.38,
+          "aurc": 0.22889775922539862,
+          "optimal_aurc": 0.0843764795520008,
+          "excess_aurc": 0.14452127967339784,
+          "confidence_ece": 0.07056398760812757,
+          "risk_at_80pct_coverage": 0.33,
+          "coverage_at_5pct_risk": 0.108,
+          "coverage_at_10pct_risk": 0.2
+        }
+      },
+      "gate": {
+        "threshold": 0.5703389933837071,
+        "coverage": 0.804,
+        "selective_risk": 0.3283582089552239,
+        "full_risk": 0.38,
+        "error_reduction": 0.1358994501178319,
+        "n_deferred": 49,
+        "n_total": 250,
+        "summary": "threshold=0.5703  coverage=80.4%  error 38.0% -> 32.8% (+13.6% relative)  deferred 49/250"
+      },
+      "spec": {
+        "key": "B4",
+        "label": "Radiomics + CNN + ViT, uniform fusion",
+        "isolates": "expert heterogeneity",
+        "fusion": "uniform",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "expert_temperatures": {
+          "radiomics": [
+            0.9663,
+            1.9638,
+            1.32,
+            1.5381,
+            1.2984
+          ],
+          "cnn": [
+            0.8557,
+            0.5695,
+            0.6041,
+            0.3759,
+            0.3868
+          ],
+          "vit": [
+            0.8853,
+            0.6289,
+            0.6564,
+            0.5072,
+            0.4439
+          ]
+        },
+        "fused_temperatures": [
+          1.0097,
+          1.0099,
+          0.5022,
+          0.4417,
+          0.6252
+        ],
+        "gate_threshold": 0.570339
+      }
+    },
+    "B5": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.636,
+        "full_risk": 0.364,
+        "aurc": 0.25720779558348317,
+        "optimal_aurc": 0.07690068042255542,
+        "excess_aurc": 0.18030711516092773,
+        "confidence_ece": 0.049997681827107954,
+        "risk_at_80pct_coverage": 0.3,
+        "coverage_at_5pct_risk": 0.008,
+        "coverage_at_10pct_risk": 0.12
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.033227563472948765,
+          "adaptive_ece": 0.025168386457748458,
+          "brier": 0.06201200557084922,
+          "nll": 0.125515516593778
+        },
+        "ncr_present": {
+          "accuracy": 0.752,
+          "ece": 0.08351124898425558,
+          "adaptive_ece": 0.11083448324853383,
+          "brier": 0.37358611503604855,
+          "nll": 0.5586153627548597
+        },
+        "laterality": {
+          "accuracy": 0.864,
+          "ece": 0.06320092527793862,
+          "adaptive_ece": 0.07727213368797037,
+          "brier": 0.18857385014706857,
+          "nll": 0.3761505684026727
+        },
+        "burden": {
+          "accuracy": 0.72,
+          "ece": 0.09774806985931019,
+          "adaptive_ece": 0.11704137543447857,
+          "brier": 0.36337965916503323,
+          "nll": 0.5811670857339477
+        },
+        "et_fraction": {
+          "accuracy": 0.552,
+          "ece": 0.09361966107225159,
+          "adaptive_ece": 0.12120169541035954,
+          "brier": 0.5605588408565629,
+          "nll": 0.9363293029657123
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.636,
+          "full_risk": 0.364,
+          "aurc": 0.25720779558348317,
+          "optimal_aurc": 0.07690068042255542,
+          "excess_aurc": 0.18030711516092773,
+          "confidence_ece": 0.049997681827107954,
+          "risk_at_80pct_coverage": 0.3,
+          "coverage_at_5pct_risk": 0.008,
+          "coverage_at_10pct_risk": 0.12
+        }
+      },
+      "gate": {
+        "threshold": 0.5849111196191417,
+        "coverage": 0.824,
+        "selective_risk": 0.3155339805825243,
+        "full_risk": 0.364,
+        "error_reduction": 0.1331484049930651,
+        "n_deferred": 44,
+        "n_total": 250,
+        "summary": "threshold=0.5849  coverage=82.4%  error 36.4% -> 31.6% (+13.3% relative)  deferred 44/250"
+      },
+      "spec": {
+        "key": "B5",
+        "label": "Radiomics + CNN + ViT, confidence-weighted",
+        "isolates": "self-reported confidence",
+        "fusion": "confidence",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "expert_temperatures": {
+          "radiomics": [
+            0.9663,
+            1.9638,
+            1.32,
+            1.5381,
+            1.2984
+          ],
+          "cnn": [
+            0.8557,
+            0.5695,
+            0.6041,
+            0.3759,
+            0.3868
+          ],
+          "vit": [
+            0.885,
+            0.6293,
+            0.6565,
+            0.5078,
+            0.4443
+          ]
+        },
+        "fused_temperatures": [
+          1.0433,
+          1.9225,
+          0.7101,
+          0.6122,
+          0.9523
+        ],
+        "gate_threshold": 0.584911
+      }
+    },
+    "B6": {
+      "overall": {
+        "n_cases": 250,
+        "case_accuracy": 0.66,
+        "full_risk": 0.34,
+        "aurc": 0.2166974931108531,
+        "optimal_aurc": 0.06643866678929264,
+        "excess_aurc": 0.15025882632156046,
+        "confidence_ece": 0.06506292356469727,
+        "risk_at_80pct_coverage": 0.28,
+        "coverage_at_5pct_risk": 0.108,
+        "coverage_at_10pct_risk": 0.136
+      },
+      "per_finding": {
+        "et_present": {
+          "accuracy": 0.964,
+          "ece": 0.029091933855341076,
+          "adaptive_ece": 0.023022399222909044,
+          "brier": 0.06456120233564738,
+          "nll": 0.13292531165998456
+        },
+        "ncr_present": {
+          "accuracy": 0.748,
+          "ece": 0.08511628127133236,
+          "adaptive_ece": 0.11351941787132093,
+          "brier": 0.35708701654141894,
+          "nll": 0.5364199946633601
+        },
+        "laterality": {
+          "accuracy": 0.88,
+          "ece": 0.054443869891978566,
+          "adaptive_ece": 0.06168062125696229,
+          "brier": 0.17174677053546727,
+          "nll": 0.30177413808702236
+        },
+        "burden": {
+          "accuracy": 0.74,
+          "ece": 0.08475711829639479,
+          "adaptive_ece": 0.11241448761262247,
+          "brier": 0.3664584826267182,
+          "nll": 0.5858249370296144
+        },
+        "et_fraction": {
+          "accuracy": 0.58,
+          "ece": 0.09322495958592178,
+          "adaptive_ece": 0.12493678500657707,
+          "brier": 0.5185358161175821,
+          "nll": 0.8580785370700933
+        }
+      },
+      "strata": {
+        "high": {
+          "n_cases": 250,
+          "case_accuracy": 0.66,
+          "full_risk": 0.34,
+          "aurc": 0.2166974931108531,
+          "optimal_aurc": 0.06643866678929264,
+          "excess_aurc": 0.15025882632156046,
+          "confidence_ece": 0.06506292356469727,
+          "risk_at_80pct_coverage": 0.28,
+          "coverage_at_5pct_risk": 0.108,
+          "coverage_at_10pct_risk": 0.136
+        }
+      },
+      "gate": {
+        "threshold": 0.5506190066529876,
+        "coverage": 0.852,
+        "selective_risk": 0.3004694835680751,
+        "full_risk": 0.34,
+        "error_reduction": 0.1162662247997791,
+        "n_deferred": 37,
+        "n_total": 250,
+        "summary": "threshold=0.5506  coverage=85.2%  error 34.0% -> 30.0% (+11.6% relative)  deferred 37/250"
+      },
+      "spec": {
+        "key": "B6",
+        "label": "Radiomics + CNN + ViT, quality-routed (ours)",
+        "isolates": "quality-conditioned routing",
+        "fusion": "router",
+        "experts": "torch"
+      },
+      "fit_log": {
+        "n_calib_fit": 125,
+        "n_calib_gate": 125,
+        "expert_temperatures": {
+          "radiomics": [
+            0.9663,
+            1.9638,
+            1.32,
+            1.5381,
+            1.2984
+          ],
+          "cnn": [
+            0.8557,
+            0.5695,
+            0.6041,
+            0.3759,
+            0.3868
+          ],
+          "vit": [
+            0.8853,
+            0.6289,
+            0.6564,
+            0.5072,
+            0.4439
+          ]
+        },
+        "router_capacity": {
+          "n_params": 120,
+          "n_samples": 125,
+          "params_per_sample": 0.96,
+          "overparameterised": false
+        },
+        "router_mean_weights": {
+          "et_present": {
+            "radiomics": 0.0009,
+            "cnn": 0.9984,
+            "vit": 0.0006
+          },
+          "ncr_present": {
+            "radiomics": 0.0011,
+            "cnn": 0.4458,
+            "vit": 0.5531
+          },
+          "laterality": {
+            "radiomics": 0.0008,
+            "cnn": 0.002,
+            "vit": 0.9972
+          },
+          "burden": {
+            "radiomics": 0.0013,
+            "cnn": 0.5426,
+            "vit": 0.4561
+          },
+          "et_fraction": {
+            "radiomics": 0.0427,
+            "cnn": 0.2453,
+            "vit": 0.712
+          }
+        },
+        "fused_temperatures": [
+          1.1192,
+          1.6671,
+          0.7717,
+          0.7657,
+          0.8031
+        ],
+        "gate_threshold": 0.550619
+      }
+    }
+  },
+  "comparison": {
+    "overall": {
+      "delta": -0.012200266114545527,
+      "ci_low": -0.04643249140306077,
+      "ci_high": 0.023038085899604863,
+      "p_two_sided": 0.493
+    },
+    "cohort=high": {
+      "delta": -0.012200266114545527,
+      "ci_low": -0.04643249140306077,
+      "ci_high": 0.023038085899604863,
+      "p_two_sided": 0.493
+    }
+  },
+  "synthetic": false,
+  "source": {
+    "data": "brats",
+    "roots": [
+      "<workspace>\\data"
+    ],
+    "cohort": null,
+    "max_cases": null,
+    "sample_seed": 0
+  },
+  "min_voxels": 500,
+  "ncr_min_voxels": 7530.0,
+  "experts": "torch"
+}

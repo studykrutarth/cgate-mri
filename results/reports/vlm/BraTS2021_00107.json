@@ -1,0 +1,162 @@
+{
+  "patient_id": "BraTS2021_00107",
+  "cohort": "high",
+  "released": false,
+  "confidence": 0.5068096686193335,
+  "gate_threshold": 0.5506190066529876,
+  "predicted": {
+    "et_present": {
+      "class": "present",
+      "p": 0.9784081297605638
+    },
+    "ncr_present": {
+      "class": "absent",
+      "p": 0.5068096686193335
+    },
+    "laterality": {
+      "class": "left",
+      "p": 0.9875740999954293
+    },
+    "burden": {
+      "class": "small",
+      "p": 0.4661245927293669
+    },
+    "et_fraction": {
+      "class": "low",
+      "p": 0.5812632949035389
+    }
+  },
+  "weakest_critical": {
+    "finding": "ncr_present",
+    "class": "absent",
+    "p": 0.5068096686193335
+  },
+  "vlm_model": "Qwen/Qwen2-VL-2B-Instruct",
+  "vlm_phrases": [],
+  "vlm_rejected": [
+    {
+      "phrase": "The lesion has a well-defined margin on all sequences, with no visible enhancement or enhancement pattern. There is no mass effect or midline shift visible on any of the sequences. There is no resection cavity or midline shift visible on any of the sequences.",
+      "vetoed_by": "phrase denies enhancement while et_present is predicted present"
+    }
+  ],
+  "sentences": [
+    {
+      "text": "Pre-operative multi-sequence MRI: axial T1, contrast-enhanced T1 (T1ce), T2 and FLAIR, co-registered, skull-stripped and resampled to 1 mm isotropic (BraTS preparation).",
+      "evidence": [
+        {
+          "source": "meta",
+          "detail": "brats-protocol"
+        }
+      ]
+    },
+    {
+      "text": "No necrotic / non-enhancing core exceeds the volume threshold (confidence 0.51). This finding is low-confidence and is hedged accordingly.",
+      "evidence": [
+        {
+          "source": "finding:ncr_present",
+          "detail": "absent p=0.51"
+        }
+      ]
+    },
+    {
+      "text": "The whole-tumour mass is predominantly left-sided (confidence 0.99).",
+      "evidence": [
+        {
+          "source": "finding:laterality",
+          "detail": "left p=0.99"
+        }
+      ]
+    },
+    {
+      "text": "An enhancing tumour component is present (confidence 0.98).",
+      "evidence": [
+        {
+          "source": "finding:et_present",
+          "detail": "present p=0.98"
+        }
+      ]
+    },
+    {
+      "text": "Whole-tumour burden is assessed as small (volume tercile fitted on the training split; confidence 0.47). This finding is low-confidence and is hedged accordingly.",
+      "evidence": [
+        {
+          "source": "finding:burden",
+          "detail": "small p=0.47"
+        }
+      ]
+    },
+    {
+      "text": "The enhancing fraction of the whole tumour is low (ET/WT tercile fitted on the training split; confidence 0.58). This finding is low-confidence and is hedged accordingly.",
+      "evidence": [
+        {
+          "source": "finding:et_fraction",
+          "detail": "low p=0.58"
+        }
+      ]
+    },
+    {
+      "text": "Acquisition quality (cjv, efc, snr, sharpness, inu, contrast, entropy) is substantially outside the training cohort range (mean |z| = 1.02); this case is a known weak point of the system.",
+      "evidence": [
+        {
+          "source": "iqm:cjv",
+          "detail": "mean|z|=1.02"
+        },
+        {
+          "source": "iqm:efc",
+          "detail": "mean|z|=1.02"
+        },
+        {
+          "source": "iqm:snr",
+          "detail": "mean|z|=1.02"
+        },
+        {
+          "source": "iqm:sharpness",
+          "detail": "mean|z|=1.02"
+        },
+        {
+          "source": "iqm:inu",
+          "detail": "mean|z|=1.02"
+        },
+        {
+          "source": "iqm:contrast",
+          "detail": "mean|z|=1.02"
+        },
+        {
+          "source": "iqm:entropy",
+          "detail": "mean|z|=1.02"
+        }
+      ]
+    },
+    {
+      "text": "DEFERRED TO RADIOLOGIST: case confidence 0.51 is below the calibrated gate threshold 0.55.",
+      "evidence": [
+        {
+          "source": "gate",
+          "detail": "deferred c=0.51 t=0.55"
+        }
+      ]
+    },
+    {
+      "text": "Lowest-confidence critical finding: ncr_present -> absent (confidence 0.51).",
+      "evidence": [
+        {
+          "source": "finding:ncr_present",
+          "detail": "weakest-critical absent p=0.51"
+        }
+      ]
+    },
+    {
+      "text": "For radiologist confirmation: ncr_present absent (p=0.51); laterality left (p=0.99).",
+      "evidence": [
+        {
+          "source": "finding:ncr_present",
+          "detail": "absent p=0.51"
+        },
+        {
+          "source": "finding:laterality",
+          "detail": "left p=0.99"
+        }
+      ]
+    }
+  ]
+}
